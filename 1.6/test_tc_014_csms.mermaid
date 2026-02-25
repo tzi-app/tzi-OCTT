@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_014_CSMS: Soft Reset
+    Note over CP,CS: Section 3.5.2 - Core Profile - Resetting Happy Flow
+
+    CS->>CP: Reset.req (type = Soft)
+    CP-->>CS: Reset.conf (status = Accepted)
+
+    Note over CP: Charge Point performs soft reset and reboots
+
+    CP->>CS: BootNotification.req
+    CS-->>CP: BootNotification.conf (status = Accepted)
+
+    loop For each connector (including connectorId=0)
+        CP->>CS: StatusNotification.req (status = Available)
+        CS-->>CP: StatusNotification.conf
+    end

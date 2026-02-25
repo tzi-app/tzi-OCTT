@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_042_2_CSMS: Get Local List Version (empty)
+    Note over CP,CS: Table 156, page 135/176
+    Note over CP,CS: Prerequisite: Central System supports Local Auth List Management
+
+    CS->>CP: 1. GetLocalListVersion.req
+    CP-->>CS: 2. GetLocalListVersion.conf (listVersion = 0)
+    Note over CP: Validation: listVersion is 0

@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_059_CSMS
+    Note over CP,CS: Remote Start Transaction with Charging Profile
+    Note over CP,CS: Table 182, Section 3.19.4, Pages 156-157/176
+    Note over CP,CS: Prerequisite: Central System supports Smart Charging feature profile
+
+    CS->>CP: 1. RemoteStartTransaction.req
+    Note left of CS: idTag: <Configured valid IdTag><br/>connectorId: <Configured ConnectorId><br/>chargingProfile.chargingProfilePurpose: TxProfile<br/>chargingProfile.transactionId: <Omitted><br/>First chargingSchedulePeriod.startPeriod: 0<br/>recurrencyKind: <Omitted><br/>chargingProfileKind: Absolute or Relative<br/>[If Absolute: validFrom, validTo,<br/> startSchedule, duration all present]<br/>[If Relative: startSchedule <Omitted>]
+
+    CP-->>CS: 2. RemoteStartTransaction.conf
+    Note over CP: status: Accepted
+
+    CP->>CS: 3. Authorize.req
+    Note right of CP: idTag: <Same as step 1>
+
+    CS-->>CP: 4. Authorize.conf
+    Note over CS: idTagInfo.status: Accepted
+
+    Note over CP,CS: [The charging cable is plugged in]
+
+    CP->>CS: 5. StatusNotification.req
+    Note right of CP: status: Preparing<br/>connectorId: <Same as step 1>
+
+    CS-->>CP: 6. StatusNotification.conf
+
+    CP->>CS: 7. StartTransaction.req
+    Note right of CP: idTag: <Same as step 1><br/>connectorId: <Same as step 1>
+
+    CS-->>CP: 8. StartTransaction.conf
+    Note over CS: status: Accepted
+
+    CP->>CS: 9. StatusNotification.req
+    Note right of CP: status: Charging<br/>connectorId: <Same as step 1>
+
+    CS-->>CP: 10. StatusNotification.conf
+
+    Note over CS: Result: The Central System has started<br/>a transaction on the Charge Point and<br/>accepts the transaction that is started<br/>on the Charge Point.

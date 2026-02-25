@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_024_CSMS
+    Note over CP,CS: Start Charging Session Lock Failure
+    Note over CP,CS: Section 3.8.4, Table 144, Page 127/176
+    Note over CP,CS: Reusable State: Authorized
+
+    CP->>CS: 1. StatusNotification.req
+    Note right of CP: status = Preparing<br/>errorCode = NoError<br/>(Tool validates: status = Preparing)
+
+    CS-->>CP: 2. StatusNotification.conf
+
+    Note over CP: EV driver plugs in the cable
+
+    CP->>CS: 3. StatusNotification.req
+    Note right of CP: errorCode = ConnectorLockFailure<br/>status = Faulted<br/>(Tool validates: errorCode + status)
+
+    CS-->>CP: 4. StatusNotification.conf

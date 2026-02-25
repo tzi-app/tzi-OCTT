@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_028_CSMS: Remote Stop Transaction – Rejected
+    Note over CP,CS: OCPP 1.6J - Core Profile - Section 3.9.2
+    Note over CP,CS: Table 146, Page 128/176
+    Note over CP,CS: Reusable State: Charging
+
+    CS->>CP: 1. RemoteStopTransaction.req
+    Note left of CS: transactionId: <unknown ID>
+
+    CP-->>CS: 2. RemoteStopTransaction.conf
+    Note right of CP: status: Rejected
+
+    Note over CS: Validation: status must be Rejected
+    Note over CP,CS: Charge Point rejects because<br/>transactionId is unknown

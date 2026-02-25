@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_061_CSMS
+    Note over CP,CS: Clear Authorization Data in Authorization Cache
+
+    CS->>CP: 1. ClearCache.req
+    CP-->>CS: 2. ClearCache.conf (status=Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    Note over CP,CS: Expected: Charge Point Authorization Cache is cleared

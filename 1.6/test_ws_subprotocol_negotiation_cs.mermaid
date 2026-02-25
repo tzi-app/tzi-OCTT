@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_088_CSMS: WebSocket Subprotocol negotiation
+    Note over CP,CS: OCPP 1.6J
+
+    rect rgb(255, 230, 230)
+        Note over CP,CS: Attempt 1 - Unsupported subprotocol only
+        CP->>CS: HTTP Upgrade Request
+        Note right of CP: Sec-WebSocket-Protocol: ocpp0.1
+
+        CS--xCP: Connection Rejected (no WebSocket upgrade)
+        Note over CS: Validation: CS must reject connection<br/>when only unsupported subprotocol offered
+    end
+
+    rect rgb(230, 255, 230)
+        Note over CP,CS: Attempt 2 - Valid subprotocol included
+        CP->>CS: HTTP Upgrade Request
+        Note right of CP: Sec-WebSocket-Protocol: ocpp0.1,ocpp1.6
+
+        CS-->>CP: Upgrade to WebSocket Connection
+        Note over CS: Validation (Step 4): HTTP upgrade response<br/>must contain Sec-WebSocket-Protocol: ocpp1.6
+    end

@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_045_1_CSMS
+    Note over CP,CS: Get Diagnostics
+    Note over CP,CS: Reference: Table 164, page 141/176
+    Note over CP,CS: Prerequisite: n/a
+
+    CS->>CP: 1. GetDiagnostics.req
+    Note left of CS: location: URI for upload<br/>(Optional: retries, retryInterval,<br/>startTime, stopTime)
+
+    CP-->>CS: 2. GetDiagnostics.conf
+    Note right of CP: fileName: name of diagnostics file (optional)
+
+    Note over CP: [Charge Point starts uploading diagnostics log]
+
+    CP->>CS: 3. DiagnosticsStatusNotification.req
+    Note right of CP: status: "Uploading"
+
+    CS-->>CP: 4. DiagnosticsStatusNotification.conf
+    Note left of CS: (empty response)
+
+    Note over CP: [Charge Point finishes uploading diagnostics log]
+
+    CP->>CS: 5. DiagnosticsStatusNotification.req
+    Note right of CP: status: "Uploaded"
+
+    CS-->>CP: 6. DiagnosticsStatusNotification.conf
+    Note left of CS: (empty response)
+
+    Note over CP,CS: Expected result: CP has uploaded diagnostics log<br/>to the location sent in step 1

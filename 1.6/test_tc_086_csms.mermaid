@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_086_CSMS (Table 196, pp.170-171)
+    Note over CP,CS: TLS - server-side certificate - Valid certificate
+    Note over CP,CS: Section 3.21.1 Secure connection setup
+    Note over CP,CS: Prerequisite: Central System supports security profile 2 and/or 3
+
+    CP->>CS: 1. Initiate TLS handshake (Client Hello)
+    CS-->>CP: 2. Server Hello with <Configured server certificate>
+
+    Note over CP: 3. Charge Point performs:<br/>Send client certificate (SP3 only)<br/>Client Key Exchange<br/>Certificate verify<br/>Change Cipher Spec<br/>Finished
+
+    Note over CS: 4. Central System performs:<br/>Change Cipher Spec<br/>Finished
+
+    Note over CP,CS: TLS Handshake Complete
+
+    Note right of CP: Tool Validation (Step 2):<br/>- TLS version >= 1.2<br/>- Required cipher suites supported<br/>- Key >= 2048 bits (RSA/DSA) or >= 224 bits (ECC)<br/>- Certificate in X.509 PEM format<br/>- Certificate has serial number<br/>- commonName RDN = FQDN of server
+
+    CP->>CS: 5. HTTP Upgrade Request
+    Note left of CP: Contains username/password<br/>only when CS uses security profile 2
+
+    CS-->>CP: 6. Upgrade to (secured) WebSocket connection
+
+    CP->>CS: 7. BootNotification.req
+    CS-->>CP: 8. BootNotification.conf
+
+    CP->>CS: 9. StatusNotification.req (per connector, connectorId=0)
+    CS-->>CP: 10. StatusNotification.conf

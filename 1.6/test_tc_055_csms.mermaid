@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_055_CSMS
+    Note over CP,CS: Trigger Message - Rejected
+    Note over CP,CS: Prerequisite: Central System supports Remote Trigger feature profile
+
+    CS->>CP: 1. TriggerMessage.req
+    Note left of CS: requestedMessage: MeterValues
+    CP-->>CS: 2. TriggerMessage.conf (status: Rejected)
+
+    Note over CS: Central System processes the rejected response

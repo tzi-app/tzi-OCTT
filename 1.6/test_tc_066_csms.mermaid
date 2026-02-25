@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_066_CSMS
+    Note over CP,CS: Get Composite Schedule
+    Note over CP,CS: Prerequisite: Central System supports Smart Charging feature profile
+
+    CS->>CP: 1. GetCompositeSchedule.req
+    Note left of CS: connectorId: <Configured ConnectorId><br/>duration: <Configured Charging Schedule Duration><br/>chargingRateUnit: <Configured Charging Rate Unit>
+
+    CP-->>CS: 2. GetCompositeSchedule.conf
+    Note right of CP: chargingSchedule contains<br/>a hard-coded composite schedule
+    Note over CS: Validation: Central System has<br/>retrieved the composite ChargingProfile

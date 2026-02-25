@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_088_CSMS
+    Note over CP,CS: WebSocket Subprotocol negotiation
+
+    CP->>CS: 1. HTTP Upgrade Request
+    Note left of CP: Sec-WebSocket-Protocol: ocpp0.1
+
+    CS--xCP: 2. Central System REJECTS connection
+    Note right of CS: Unsupported subprotocol<br/>Connection NOT upgraded
+
+    CP->>CS: 3. HTTP Upgrade Request
+    Note left of CP: Sec-WebSocket-Protocol: ocpp0.1,ocpp1.6
+
+    CS-->>CP: 4. Central System ACCEPTS connection
+    Note right of CS: Sec-WebSocket-Protocol: ocpp1.6<br/>Connection upgraded to WebSocket
+
+    Note over CP,CS: Validation: Response header must contain<br/>Sec-WebSocket-Protocol: ocpp1.6

@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Table 152 - Test Case: TC_039_CSMS
+    Note over CP,CS: Offline Transaction
+    Note over CP,CS: OCPP 1.6J - Core Profile - Section 3.12.3
+    Note over CP,CS: Document page 132-133/176
+
+    Note over CP: [Remove connectivity between<br/>Charge Point and Central System]
+
+    Note over CP: [EV Driver starts offline a transaction]
+
+    Note over CP: [EV Driver stops offline a transaction]
+
+    Note over CP: [EV driver unplugs the cable]
+
+    Note over CP: [Restore connectivity between<br/>Charge Point and Central System]
+
+    CP->>CS: 1. StartTransaction.req
+
+    CS-->>CP: 2. StartTransaction.conf
+    Note over CS: Validation: idTagInfo.status = Accepted
+
+    CP->>CS: 3. StopTransaction.req
+    Note over CP: Validation: reason = Local
+
+    CS-->>CP: 4. StopTransaction.conf

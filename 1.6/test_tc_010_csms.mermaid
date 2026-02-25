@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_010_CSMS
+    Note over CP,CS: Remote Start Charging Session – Cable Plugged in First
+
+    Note over CP: [EV driver plugs in the cable]
+
+    CP->>CS: 1. StatusNotification.req (status=Preparing, errorCode=NoError)
+    Note over CP: Validation: status must be Preparing
+    CS-->>CP: 2. StatusNotification.conf
+
+    CS->>CP: 3. RemoteStartTransaction.req (idTag)
+    CP-->>CS: 4. RemoteStartTransaction.conf (status=Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 5. Authorize.req (idTag from step 3)
+    CS-->>CP: 6. Authorize.conf (idTagInfo.status=Accepted)
+    Note over CS: Validation: idTagInfo.status must be Accepted
+
+    CP->>CS: 7. StartTransaction.req (connectorId, idTag, meterStart, timestamp)
+    CS-->>CP: 8. StartTransaction.conf (transactionId, idTagInfo.status=Accepted)
+    Note over CS: Validation: idTagInfo.status must be Accepted
+
+    CP->>CS: 9. StatusNotification.req (status=Charging, errorCode=NoError)
+    CS-->>CP: 10. StatusNotification.conf
+    Note over CP: Validation: status must be Charging

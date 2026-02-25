@@ -1,0 +1,57 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_080_CSMS
+    Note over CP,CS: Secure Firmware Update
+    Note over CP,CS: Prerequisites: Firmware Management profile + security profile
+
+    CS->>CP: 1. SignedUpdateFirmware.req
+    Note right of CS: firmware.location = <Download URL><br/>firmware.signature = <signature><br/>firmware.signingCertificate = <cert>
+
+    CP-->>CS: 2. SignedUpdateFirmware.conf
+
+    CP->>CS: 3. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Downloading
+    CS-->>CP: 4. SignedFirmwareStatusNotification.conf
+
+    Note over CP: Charge Point finishes downloading
+
+    CP->>CS: 5. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Downloaded
+    CS-->>CP: 6. SignedFirmwareStatusNotification.conf
+
+    Note over CP: Charge Point verifies signature
+
+    CP->>CS: 7. SignedFirmwareStatusNotification.req
+    Note left of CP: status = SignatureVerified
+    CS-->>CP: 8. SignedFirmwareStatusNotification.conf
+
+    Note over CP: Charge Point MAY set connectors to Unavailable<br/>Charge Point starts installing firmware
+
+    CP->>CS: 9. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Installing
+    CS-->>CP: 10. SignedFirmwareStatusNotification.conf
+
+    CP->>CS: 11. SignedFirmwareStatusNotification.req
+    Note left of CP: status = InstallRebooting
+    CS-->>CP: 12. SignedFirmwareStatusNotification.conf
+
+    Note over CP,CS: Step 13 / 15 / 17 / 19 may arrive in different order
+
+    CP->>CS: 13. BootNotification.req
+    CS-->>CP: 14. BootNotification.conf
+
+    CP->>CS: 15. SecurityEventNotification.req
+    Note left of CP: type = FirmwareUpdated
+    CS-->>CP: 16. SecurityEventNotification.conf
+
+    CP->>CS: 17. StatusNotification.req
+    Note left of CP: status = Available
+    CS-->>CP: 18. StatusNotification.conf
+
+    Note over CP: Charge Point finishes installing firmware
+
+    CP->>CS: 19. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Installed
+    CS-->>CP: 20. SignedFirmwareStatusNotification.conf

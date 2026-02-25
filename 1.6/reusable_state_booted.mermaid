@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Reusable State: Booted
+    Note over CP,CS: Table 199, Section 3.22, Page 173
+
+    CP->>CS: BootNotification.req
+    Note right of CP: chargePointVendor = <Configured Vendor Name><br/>chargePointModel = <Configured Model>
+
+    CS-->>CP: BootNotification.conf
+    Note over CS: Validation: status should be Accepted
+
+    loop Send per connector and connectorId=0
+        CP->>CS: StatusNotification.req
+        Note right of CP: status = Available
+        CS-->>CP: StatusNotification.conf
+    end
+
+    Note over CP,CS: State is Booted

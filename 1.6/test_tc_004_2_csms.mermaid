@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Table 125 - TC_004_2_CSMS
+    Note over CP,CS: Regular Charging Session – Identification First - ConnectionTimeOut
+    Note over CP,CS: Chapter 3.2.3 | Page 111/176
+    Note over CP,CS: Reusable State: Authorized (Table 200)
+
+    CP->>CS: 1. StatusNotification.req
+
+    CS-->>CP: 2. StatusNotification.conf
+
+    Note over CP,CS: [After the configured connectionTimeOut has expired.]
+
+    CP->>CS: 3. StatusNotification.req
+
+    CS-->>CP: 4. StatusNotification.conf
+
+    Note over CP,CS: Validation Step 1: StatusNotification.req - status is Preparing
+    Note over CP,CS: Validation Step 3: StatusNotification.req - status is Available

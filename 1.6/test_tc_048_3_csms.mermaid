@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_048_3_CSMS
+    Note over CP,CS: Reservation of a Connector - Unavailable
+    Note over CP,CS: Document Ref: Table 170, pages 145-146/176
+    Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
+    Note over CP,CS: Before: Configuration/Memory/Reusable States: n/a
+
+    CS->>CP: 1. ChangeAvailability.req (connectorId: <Configured>, type: Inoperative)
+    CP-->>CS: 2. ChangeAvailability.conf
+
+    CP->>CS: 3. StatusNotification.req (status: Unavailable, connectorId: from step 1)
+    Note over CP: Validation: status must be Unavailable
+    CS-->>CP: 4. StatusNotification.conf
+
+    CS->>CP: 5. ReserveNow.req
+    Note left of CS: connectorId: connectorId from step 1<br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: <future timestamp>
+
+    CP-->>CS: 6. ReserveNow.conf (status: Unavailable)
+    Note over CP: Validation: status must be Unavailable
+
+    Note over CP,CS: Expected: CSMS accepts the Reservation message with the not Accepted status
+    Note over CP,CS: Expected (CP side): n/a

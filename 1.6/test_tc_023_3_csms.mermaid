@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_023_3_CSMS
+    Note over CP,CS: Start Charging Session – Authorize blocked
+    Note over CP,CS: Doc: Section 3.8.3, Table 143, Page 127/176
+    Note over CP,CS: Prerequisite: Central System has an idTag with status 'Blocked'
+
+    Note over CP: EV driver presents blocked identification
+
+    CP->>CS: 1. Authorize.req
+    Note right of CP: idTag = [blocked idTag]
+
+    CS-->>CP: 2. Authorize.conf
+    Note over CS: Validation: idTagInfo.status = Blocked

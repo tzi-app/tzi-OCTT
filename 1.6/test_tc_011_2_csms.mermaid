@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_011_2_CSMS
+    Note over CP,CS: Remote Start Charging Session – Time Out
+
+    CS->>CP: 1. RemoteStartTransaction.req (idTag)
+    CP-->>CS: 2. RemoteStartTransaction.conf (status=Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 3. Authorize.req (idTag from step 1)
+    CS-->>CP: 4. Authorize.conf (idTagInfo.status=Accepted)
+    Note over CS: Validation: idTagInfo.status must be Accepted
+
+    CP->>CS: 5. StatusNotification.req (status=Preparing, errorCode=NoError)
+    CS-->>CP: 6. StatusNotification.conf
+    Note over CP: Validation: status must be Preparing
+
+    Note over CP: [Connection timeout reached – cable not plugged in]
+
+    CP->>CS: 7. StatusNotification.req (status=Available, errorCode=NoError)
+    CS-->>CP: 8. StatusNotification.conf
+    Note over CP: Validation: status must be Available

@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_046_CSMS (Table 166, Page 142/176)
+    Note over CP,CS: Reservation of a Connector - Transaction
+    Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
+
+    CS->>CP: 1. ReserveNow.req
+    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag>
+    Note left of CS: Validation (CS-SUT):<br/>connectorId should be <Configured ConnectorId><br/>idTag should be <Configured Valid IdTag>
+
+    CP-->>CS: 2. ReserveNow.conf (status: Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 3. StatusNotification.req (status: Reserved)
+    Note over CP: Validation: status must be Reserved
+    CS-->>CP: 4. StatusNotification.conf
+
+    rect rgb(230, 240, 255)
+        Note over CP,CS: 5. Execute Reusable State: Charging (Table 201)<br/>Depends on Reusable State: Authorized (Table 200)
+
+        Note over CP,CS: --- Reusable State: Authorized ---
+        CP->>CS: 5a. Authorize.req (idTag: <Configured Valid IdTag>)
+        CS-->>CP: 5b. Authorize.conf
+        Note over CS: Validation: idTagInfo.status should be Accepted
+
+        Note over CP,CS: --- Reusable State: Charging ---
+        CP->>CS: 5c. StatusNotification.req (status: Preparing, connectorId: <Configured ConnectorId>)
+        CS-->>CP: 5d. StatusNotification.conf
+
+        CP->>CS: 5e. StartTransaction.req
+        Note right of CP: idTag: <Configured Valid IdTag><br/>connectorId: <Configured ConnectorId><br/>reservationId: from step 1
+        CS-->>CP: 5f. StartTransaction.conf
+        Note over CS: Validation: idTagInfo.status should be Accepted
+        Note over CP: Validation: reservationId is the reservationId from step 1
+
+        CP->>CS: 5g. StatusNotification.req (status: Charging, connectorId: <Configured ConnectorId>)
+        CS-->>CP: 5h. StatusNotification.conf
+    end

@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_043_3_CSMS: Send Local Authorization List - Failed
+    Note over CP,CS: Ref: Table 158, Page 136
+    Note over CP,CS: Prerequisite: Central System supports Local Auth List Management
+
+    CS->>CP: 1. SendLocalList.req
+    Note over CS: Validation Step 1 (Message: SendLocalList.req):<br/>updateType should be Full
+
+    CP-->>CS: 2. SendLocalList.conf
+    Note over CP: Validation Step 2 (Message: SendLocalList):<br/>Status is Failed
+
+    Note over CS: Expected: CS is able to send a local list<br/>and receive a Failed response

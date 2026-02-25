@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_057_CSMS (Table 179, pp.152-153/176)
+    Note over CP,CS: Central Smart Charging - TxProfile
+    Note over CP,CS: Prerequisite: Central System supports Smart Charging feature profile
+    Note over CP,CS: Reusable State: Charging (see reusable state definition in doc)
+
+    CS->>CP: 1. SetChargingProfile.req
+    Note left of CS: connectorId: <Configured connectorId><br/>chargingProfilePurpose: TxProfile<br/>transactionId: <Generated transactionId><br/>recurrencyKind: <Omitted><br/>chargingProfileKind: Absolute or Relative<br/><br/>If Absolute:<br/>  validFrom: <Not omitted><br/>  validTo: <Not omitted><br/>  startSchedule: <Not omitted><br/>  duration: <Not omitted><br/><br/>If Relative:<br/>  startSchedule: <Omitted>
+
+    CP-->>CS: 2. SetChargingProfile.conf
+    Note over CS: Validation: status must be Accepted

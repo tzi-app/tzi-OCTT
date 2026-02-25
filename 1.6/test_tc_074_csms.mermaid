@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_074_CSMS
+    Note over CP,CS: Update Charge Point Certificate by request of Central System
+    Note over CP,CS: Prerequisite: Central System supports security profile 3
+
+    CS->>CP: 1. ExtendedTriggerMessage.req
+    Note right of CS: requestedMessage = SignChargePointCertificate<br/>connectorId = <Omitted>
+
+    CP-->>CS: 2. ExtendedTriggerMessage.conf
+    Note left of CP: status = Accepted
+
+    Note over CP: Charge Point generates new<br/>public/private key pair and CSR
+
+    CP->>CS: 3. SignCertificate.req
+
+    CS-->>CP: 4. SignCertificate.conf
+    Note right of CS: status = Accepted
+
+    Note over CS: Certificate Authority signs the certificate
+
+    CS->>CP: 5. CertificateSigned.req
+    Note right of CS: certificateChain = signed certificate<br/>(valid PEM, matching public key,<br/>correct algorithm, CN = serialNumber)
+
+    Note over CP: Charge Point verifies the signed certificate
+
+    CP-->>CS: 6. CertificateSigned.conf
+    Note left of CP: status = Accepted
+
+    Note over CP: 7. Charge Point disconnects and reconnects<br/>with the new certificate
+
+    CP->>CS: Reconnect with new certificate
+    CS-->>CP: 8. Central System accepts connection

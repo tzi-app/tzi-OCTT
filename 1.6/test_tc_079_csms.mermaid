@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_079_CSMS
+    Note over CP,CS: Get Security Log
+    Note over CP,CS: Prerequisite: Central System supports a security profile
+
+    CS->>CP: 1. GetLog.req
+    Note right of CS: log.remoteLocation = <Configured log location><br/>logType = SecurityLog
+
+    CP-->>CS: 2. GetLog.conf
+    Note left of CP: status = Accepted
+
+    Note over CP: Charge Point starts uploading security log
+
+    CP->>CS: 3. LogStatusNotification.req
+    Note left of CP: status = Uploading
+
+    CS-->>CP: 4. LogStatusNotification.conf
+
+    Note over CP: Charge Point finishes uploading security log
+
+    CP->>CS: 5. LogStatusNotification.req
+    Note left of CP: status = Uploaded
+
+    CS-->>CP: 6. LogStatusNotification.conf

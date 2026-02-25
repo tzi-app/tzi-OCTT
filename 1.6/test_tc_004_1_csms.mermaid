@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case TC_004_1_CSMS: Regular Charging Session – Identification First
+    Note over CP,CS: OCPP 1.6j – Section 3.2.2, Table 124, Page 111/176
+
+    rect rgb(230, 245, 255)
+    Note over CP,CS: Reusable State: Authorized (Table 200, Page 173/176)
+
+    CP->>CS: 1. Authorize.req
+    Note right of CP: idTag = <Configured Valid IdTag>
+
+    CS-->>CP: 2. Authorize.conf
+
+    Note over CP,CS: Validation: Authorize.conf idTagInfo.status should be "Accepted"
+    end
+
+    rect rgb(230, 255, 230)
+    Note over CP,CS: Reusable State: Charging (Table 201, Page 174/176)
+
+    CP->>CS: 3. StatusNotification.req
+    Note right of CP: connectorId = <Configured ConnectorId><br/>status = Preparing
+
+    CS-->>CP: 4. StatusNotification.conf
+
+    CP->>CS: 5. StartTransaction.req
+    Note right of CP: connectorId = <Configured ConnectorId><br/>idTag = <Configured Valid IdTag>
+
+    CS-->>CP: 6. StartTransaction.conf
+
+    Note over CP,CS: Validation: StartTransaction.conf idTagInfo.status should be "Accepted"
+
+    CP->>CS: 7. StatusNotification.req
+    Note right of CP: connectorId = <Configured ConnectorId><br/>status = Charging
+
+    CS-->>CP: 8. StatusNotification.conf
+    end
+
+    Note over CP,CS: Result: State is Charging

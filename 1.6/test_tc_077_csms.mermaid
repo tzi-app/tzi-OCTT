@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_077_CSMS
+    Note over CP,CS: Invalid ChargePointCertificate Security Event
+    Note over CP,CS: Prerequisite: Central System supports security profile 3
+
+    CS->>CP: 1. ExtendedTriggerMessage.req
+    Note right of CS: requestedMessage = SignChargePointCertificate<br/>connectorId = <Omitted>
+
+    CP-->>CS: 2. ExtendedTriggerMessage.conf
+    Note left of CP: status = Accepted
+
+    Note over CP: Charge Point generates new key pair and CSR
+
+    CP->>CS: 3. SignCertificate.req
+
+    CS-->>CP: 4. SignCertificate.conf
+    Note right of CS: status = Accepted
+
+    Note over CS: Certificate Authority signs the certificate
+
+    CS->>CP: 5. CertificateSigned.req
+    Note right of CS: certificate = <Signed ChargePointCertificate>
+
+    Note over CP: Charge Point verifies certificate validity<br/>(deems it invalid)
+
+    CP-->>CS: 6. CertificateSigned.conf
+    Note left of CP: status = Rejected
+
+    CP->>CS: 7. SecurityEventNotification.req
+    Note left of CP: type = InvalidChargePointCertificate
+
+    CS-->>CP: 8. SecurityEventNotification.conf

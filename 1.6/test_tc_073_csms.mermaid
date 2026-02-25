@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_073_CSMS (Table 184, page 158/176)
+    Note over CP,CS: Update Charge Point Password for HTTP Basic Authentication
+    Note over CP,CS: Section: 3.21.1. Secure connection setup
+    Note over CP,CS: Prerequisite: Central System supports Security profile 1 and/or 2
+
+    Note over CP,CS: Manual Action: Update the basic authentication password
+
+    CS->>CP: 1. ChangeConfiguration.req
+    Note right of CS: key = AuthorizationKey<br/>value = hex encoded new password<br/>(16-20 bytes, max 40 hex chars)
+
+    CP-->>CS: 2. ChangeConfiguration.conf
+    Note left of CP: status = Accepted
+
+    Note over CP: 3. Charge Point disconnects and reconnects<br/>using the new password from step 1

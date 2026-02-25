@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_040_1_CSMS: Configuration keys - NotSupported
+    Note over CP,CS: Profile: Core | OCPP 1.6J
+    Note over CP,CS: Ref: Section 3.13.1, Table 153, Page 134
+
+    CS->>CP: ChangeConfiguration.req
+    Note right of CS: key = (SUT decides, not specified in test case)
+    Note right of CS: value = (SUT decides, not specified in test case)
+
+    CP-->>CS: ChangeConfiguration.conf
+    Note left of CP: status = NotSupported
+
+    Note over CP,CS: Validation: ChangeConfiguration.conf status is NotSupported

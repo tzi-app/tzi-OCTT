@@ -1,0 +1,51 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_067_CSMS (Table 181, Section 3.19.3, Pages 154-155/176)
+    Note over CP,CS: Clear Charging Profile
+    Note over CP,CS: Feature profile: SmartCharging (Section 3.19)
+    Note over CP,CS: Prerequisite: Central System supports Smart Charging feature profile
+    Note over CP,CS: Reusable State: Charging
+
+    rect rgb(240, 248, 255)
+        Note over CP,CS: Manual Action: Set three different charging profiles. Steps 1-2 are therefor repeated three times.
+
+        CS->>CP: 1a. SetChargingProfile.req (Profile 1)
+        Note left of CS: connectorId: 0<br/>chargingProfilePurpose: ChargePointMaxProfile<br/>stackLevel: <Configured><br/>transactionId: <Omitted><br/>chargingProfileId: <Unique>
+        CP-->>CS: 2a. SetChargingProfile.conf (status: Accepted)
+
+        CS->>CP: 1b. SetChargingProfile.req (Profile 2)
+        Note left of CS: connectorId: <Configured ConnectorId><br/>chargingProfilePurpose: TxDefaultProfile<br/>stackLevel: <Configured><br/>transactionId: <Omitted><br/>chargingProfileId: <Unique>
+        CP-->>CS: 2b. SetChargingProfile.conf (status: Accepted)
+
+        CS->>CP: 1c. SetChargingProfile.req (Profile 3)
+        Note left of CS: connectorId: <Configured ConnectorId><br/>chargingProfilePurpose: TxProfile<br/>stackLevel: <Configured><br/>transactionId: <Generated transactionId><br/>chargingProfileId: <Unique>
+        CP-->>CS: 2c. SetChargingProfile.conf (status: Accepted)
+    end
+
+    rect rgb(255, 248, 240)
+        Note over CP,CS: Manual Action: Clear a charging profile based on ID
+
+        CS->>CP: 3. ClearChargingProfile.req
+        Note left of CS: id: <Id from profile 1><br/>connectorId: <Omitted><br/>chargingProfilePurpose: <Omitted><br/>stackLevel: <Omitted>
+        CP-->>CS: 4. ClearChargingProfile.conf (status: Accepted)
+    end
+
+    rect rgb(248, 255, 240)
+        Note over CP,CS: Manual Action: Clear a charging profile based on criteria
+
+        CS->>CP: 5. ClearChargingProfile.req
+        Note left of CS: id: <Omitted><br/>connectorId: <Configured ConnectorId><br/>chargingProfilePurpose: TxDefaultProfile<br/>stackLevel: <Configured Stack Level>
+        CP-->>CS: 6. ClearChargingProfile.conf (status: Accepted)
+    end
+
+    rect rgb(255, 240, 248)
+        Note over CP,CS: Manual Action: Clear all remaining charging profiles
+
+        CS->>CP: 7. ClearChargingProfile.req
+        Note left of CS: All fields omitted
+        CP-->>CS: 8. ClearChargingProfile.conf (status: Accepted)
+    end
+
+    Note over CS: Result: Central System was able to<br/>clear the ChargingProfile of the Charge Point

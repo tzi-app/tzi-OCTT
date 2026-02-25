@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_030_CSMS
+    Note over CP,CS: Unlock Connector – Unlock Failure
+    Note over CP,CS: OCPP 1.6J - Core Profile
+    Note over CP,CS: Section 3.10.1 / Table 147 / Page 134
+    Note over CP,CS: Prerequisite: n/a
+
+    CS->>CP: 1. UnlockConnector.req
+    Note left of CS: connectorId = [valid connector id]
+
+    CP-->>CS: 2. UnlockConnector.conf
+    Note right of CP: status = "UnlockFailed"
+    Note over CP: Validation: status must be UnlockFailed
+
+    Note over CP,CS: Purpose: Verify Central System can handle<br/>a connector lock failure report

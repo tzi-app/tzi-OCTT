@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_064_CSMS
+    Note over CP,CS: Data Transfer to a Central System
+    Note over CP,CS: Prerequisite: Central System does not support DataTransfer for a specific vendorId
+
+    CP->>CS: 1. DataTransfer.req
+    Note right of CP: vendorId: <Unsupported VendorId><br/>messageId: (optional)<br/>data: (optional)
+
+    CS-->>CP: 2. DataTransfer.conf
+    Note left of CS: status: Rejected OR UnknownMessageId<br/>OR UnknownVendorId
+
+    Note over CP,CS: Note: status Accepted is allowed,<br/>but vendor should be warned about this behaviour
+    Note over CS: Validation: Central System does not<br/>accept the DataTransfer.req

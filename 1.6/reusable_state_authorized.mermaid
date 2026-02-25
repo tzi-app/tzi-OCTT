@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Table 200 - Reusable State: Authorized
+    Note over CP,CS: OCPP 1.6J
+
+    CP->>CS: Authorize.req
+    Note right of CP: idTag is <Configured Valid IdTag>
+
+    CS-->>CP: Authorize.conf
+    Note over CS: Validation: idTagInfo.status should be Accepted
+
+    Note over CP,CS: State is Authorized

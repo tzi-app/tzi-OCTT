@@ -1,0 +1,39 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_054_CSMS
+    Note over CP,CS: Trigger Message
+    Note over CP,CS: Prerequisite: Central System supports Remote Trigger feature profile
+
+    CS->>CP: 1. TriggerMessage.req
+    Note left of CS: requestedMessage: MeterValues<br/>connectorId: <Configured ConnectorId>
+    CP-->>CS: 2. TriggerMessage.conf (status: Accepted)
+    CP->>CS: 3. MeterValues.req
+    CS-->>CP: 4. MeterValues.conf
+
+    CS->>CP: 5. TriggerMessage.req
+    Note left of CS: requestedMessage: Heartbeat
+    CP-->>CS: 6. TriggerMessage.conf (status: Accepted)
+    CP->>CS: 7. Heartbeat.req
+    CS-->>CP: 8. Heartbeat.conf
+
+    CS->>CP: 9. TriggerMessage.req
+    Note left of CS: requestedMessage: StatusNotification<br/>connectorId: <Configured ConnectorId>
+    CP-->>CS: 10. TriggerMessage.conf (status: Accepted)
+    CP->>CS: 11. StatusNotification.req
+    CS-->>CP: 12. StatusNotification.conf
+
+    CS->>CP: 13. TriggerMessage.req
+    Note left of CS: requestedMessage: DiagnosticsStatusNotification
+    CP-->>CS: 14. TriggerMessage.conf (status: Accepted)
+    CP->>CS: 15. DiagnosticsStatusNotification.req (status: Idle)
+    CS-->>CP: 16. DiagnosticsStatusNotification.conf
+
+    CS->>CP: 17. TriggerMessage.req
+    Note left of CS: requestedMessage: FirmwareStatusNotification
+    CP-->>CS: 18. TriggerMessage.conf (status: Accepted OR NotImplemented)
+
+    Note over CP,CS: The following message will be sent if implemented
+    CP->>CS: 19. FirmwareStatusNotification.req (status: Idle)
+    CS-->>CP: 20. FirmwareStatusNotification.conf

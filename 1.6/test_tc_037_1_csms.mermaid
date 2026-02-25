@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_037_1_CSMS
+    Note over CP,CS: Offline Start Transaction - Valid IdTag
+    Note over CP,CS: OCPP 1.6J - Core Profile - Section 3.12.1<br/>Document ref: Table 150 (Page 131/176)
+
+    Note over CP: [Remove connectivity between<br/>Charge Point and Central System]
+
+    Note over CP: [EV Driver starts offline a transaction<br/>with a valid idTag]
+
+    Note over CP: [Restore connectivity between<br/>Charge Point and Central System]
+
+    CP->>CS: 1. StartTransaction.req
+    Note right of CP: connectorId: &lt;Configured connectorId&gt;<br/>idTag: &lt;Configured valid idTag&gt;<br/>meterStart: &lt;meter value&gt;<br/>timestamp: &lt;offline timestamp&gt;
+
+    CS-->>CP: 2. StartTransaction.conf
+    Note over CS: Validation: idTagInfo.status = Accepted
+
+    CP->>CS: 3. StatusNotification.req
+    Note right of CP: connectorId: &lt;Configured connectorId&gt;<br/>errorCode: NoError<br/>status: Charging
+    Note over CP: Validation: status = Charging
+
+    CS-->>CP: 4. StatusNotification.conf

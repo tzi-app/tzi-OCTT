@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_048_2_CSMS
+    Note over CP,CS: Reservation of a Connector - Occupied
+    Note over CP,CS: Table 169, pages 144-145 (CompliancyTestTool-TestCaseDocument 2025-11)
+    Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
+
+    Note over CP: [EV driver plugs in cable]
+
+    CP->>CS: 1. StatusNotification.req (status: Preparing, connectorId: <Configured>)
+    Note over CP: Validation: status must be Preparing, connectorId must be <Configured ConnectorId>
+    CS-->>CP: 2. StatusNotification.conf
+
+    CS->>CP: 3. ReserveNow.req
+    Note left of CS: connectorId: connectorId from step 1<br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id> (inferred from OCPP spec)<br/>expiryDate: <future timestamp> (inferred from OCPP spec)
+    Note left of CS: Validation: connectorId from step 1, idTag is <Configured Valid IdTag>
+
+    CP-->>CS: 4. ReserveNow.conf (status: Occupied)
+    Note over CP: Validation: status must be Occupied
+
+    Note over CP,CS: Expected: CS accepts the Reservation message with the not Accepted status

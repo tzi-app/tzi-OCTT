@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_018_1_CSMS: Unlock Connector - With Charging Session (Not fixed cable)
+    Note over CP,CS: Section 3.6.3 | Table 137 | Page 122
+    Note over CP,CS: Reusable State: Charging (Table 201, Page 174)
+
+    CS->>CP: 1. UnlockConnector.req
+    CP-->>CS: 2. UnlockConnector.conf
+
+    CP->>CS: 3. StatusNotification.req
+    CS-->>CP: 4. StatusNotification.conf
+
+    CP->>CS: 5. StopTransaction.req
+    CS-->>CP: 6. StopTransaction.conf
+
+    Note over CP,CS: [EV driver unplugs the cable.]
+
+    CP->>CS: 7. StatusNotification.req
+    CS-->>CP: 8. StatusNotification.conf
+
+    Note over CP,CS: Tool Validations:
+    Note over CP,CS: Step 2: UnlockConnector.conf → status is Unlocked
+    Note over CP,CS: Step 3: StatusNotification.req → status is Finishing
+    Note over CP,CS: Step 5: StopTransaction.req → reason is UnlockCommand
+    Note over CP,CS: Step 7: StatusNotification.req → status is Available

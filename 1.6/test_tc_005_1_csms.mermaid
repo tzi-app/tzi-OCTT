@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case TC_005_1_CSMS: EV Side Disconnected
+    Note over CP,CS: OCPP 1.6j - Chapter 3.2.4
+    Note over CP,CS: Document Reference: Table 126, pages 112-113/176
+    Note over CP,CS: StopTransactionOnEVSideDisconnect = true
+    Note over CP,CS: UnlockConnectorOnEVSideDisconnect = true
+    Note over CP,CS: Reusable State: Charging
+
+    Note over CP: EV driver disconnects cable on EV side
+
+    CP->>CS: 1. StatusNotification.req
+    Note right of CP: connectorId = 1, status = SuspendedEV, errorCode = NoError
+
+    CS-->>CP: 2. StatusNotification.conf
+
+    Note over CP,CS: Validation: StatusNotification.req status MUST be "SuspendedEV"
+
+    CP->>CS: 3. StopTransaction.req
+    Note right of CP: transactionId, meterStop, timestamp, reason = EVDisconnected
+
+    CS-->>CP: 4. StopTransaction.conf
+
+    Note over CP,CS: Validation: StopTransaction.req reason MUST be "EVDisconnected"
+
+    CP->>CS: 5. StatusNotification.req
+    Note right of CP: connectorId = 1, status = Finishing, errorCode = NoError
+
+    CS-->>CP: 6. StatusNotification.conf
+
+    Note over CP,CS: Validation: StatusNotification.req status MUST be "Finishing"
+
+    Note over CP: EV driver unplugs cable from the Charge Point
+
+    CP->>CS: 7. StatusNotification.req
+    Note right of CP: connectorId = 1, status = Available, errorCode = NoError
+
+    CS-->>CP: 8. StatusNotification.conf
+
+    Note over CP,CS: Validation: StatusNotification.req status MUST be "Available"

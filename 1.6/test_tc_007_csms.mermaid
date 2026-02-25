@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_007_CSMS
+    Note over CP,CS: Regular Start Charging Session – Cached Id
+
+    Note over CP,CS: [EV driver plugs in the cable.]
+
+    CP->>CS: 1. StatusNotification.req (connectorId=1, status=Preparing, errorCode=NoError)
+    Note over CP: Validation: status must be Preparing
+    CS-->>CP: 2. StatusNotification.conf
+
+    Note over CP,CS: [EV driver presents identification (cached idTag).]
+
+    CP->>CS: 3. StartTransaction.req (connectorId=1, idTag=<cached_id>, meterStart=0, timestamp=<current_timestamp>)
+    CS-->>CP: 4. StartTransaction.conf (idTagInfo.status=Accepted, transactionId)
+    Note over CP: Validation: idTagInfo.status must be Accepted
+
+    CP->>CS: 5. StatusNotification.req (connectorId=1, status=Charging, errorCode=NoError)
+    CS-->>CP: 6. StatusNotification.conf
+    Note over CP: Validation: status must be Charging

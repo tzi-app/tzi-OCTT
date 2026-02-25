@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_043_5_CSMS: Send Local Authorization List - Differential
+    Note over CP,CS: Section 3.14.2, Table 160, pages 137-138/176
+    Note over CP,CS: Prerequisite: Central System supports Local Auth List Management
+    Note over CP,CS: Prerequisite: Central System has at least 1 IdToken
+    Note over CP,CS: Before: Initial local authorization list set using update type Full
+
+    rect rgb(200, 220, 240)
+        Note over CP,CS: Steps 1-2 are optional
+        CS->>CP: 1. GetLocalListVersion.req
+        CP-->>CS: 2. GetLocalListVersion.conf
+        Note over CP: Validation: listVersion is <Provided listVersion by Central System>
+    end
+
+    Note over CP,CS: Manual Action: Trigger the Central System to send a<br/>SendLocalList updateType Differential for a specific<br/>idToken not already part of the list
+
+    CS->>CP: 3. SendLocalList.req
+    Note over CS: Validation: updateType should be Differential
+    Note over CS: Validation: localAuthorizationList contains<br/><Only the specified idToken, including an idTagInfo>
+    Note over CS: Validation: versionNumber should be<br/><Greater than the initial listVersion>
+
+    CP-->>CS: 4. SendLocalList.conf
+    Note over CP: Validation: status is Accepted

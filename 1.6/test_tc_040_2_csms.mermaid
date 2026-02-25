@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_040_2_CSMS: Configuration keys - Invalid value
+    Note over CP,CS: Profile: Core | OCPP 1.6J
+    Note over CP,CS: Doc ref: Section 3.13.2, Table 154, Page 134/176
+
+    CS->>CP: 1. ChangeConfiguration.req
+    Note right of CS: key = MeterValueSampleInterval
+    Note right of CS: value = (not specified by doc, TODO: confirm)
+
+    CP-->>CS: 2. ChangeConfiguration.conf
+    Note left of CP: status = Rejected
+
+    Note over CP,CS: Tool validation Step 1: ChangeConfiguration.req key MUST be MeterValueSampleInterval
+    Note over CP,CS: Tool validation Step 2: ChangeConfiguration.conf status MUST be Rejected

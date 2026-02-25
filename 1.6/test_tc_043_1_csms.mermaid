@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_043_1_CSMS: Send Local Authorization List - NotSupported
+    Note over CP,CS: Table 157, Section 3.14.2, Page 136/176
+    Note over CP,CS: Prerequisite: Central System supports Local Auth List Management
+
+    CS->>CP: SendLocalList.req (updateType = Full)
+    Note over CS: Validation: updateType should be Full
+
+    CP-->>CS: SendLocalList.conf (status = NotSupported)
+    Note over CP: Validation: status is NotSupported
+
+    Note over CP,CS: Central System handles NotSupported response

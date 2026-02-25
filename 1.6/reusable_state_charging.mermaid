@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Reusable State: Charging (Table 201, Page 174)
+    Note over CP,CS: OCPP 1.6J
+    Note over CP,CS: Prerequisite: Authorized state (Table 200, Page 173)
+
+    CP->>CS: StatusNotification.req
+    Note right of CP: status = Preparing<br/>connectorId = <Configured ConnectorId>
+    CS-->>CP: StatusNotification.conf
+
+    CP->>CS: StartTransaction.req
+    Note right of CP: idTag = <Configured Valid IdTag><br/>connectorId = <Configured ConnectorId>
+    CS-->>CP: StartTransaction.conf
+    Note over CS: Validation: idTagInfo.status must be Accepted
+
+    CP->>CS: StatusNotification.req
+    Note right of CP: status = Charging<br/>connectorId = <Configured ConnectorId>
+    CS-->>CP: StatusNotification.conf
+
+    Note over CP,CS: State is Charging

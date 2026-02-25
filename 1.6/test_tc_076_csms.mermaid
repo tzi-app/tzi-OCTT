@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_076_CSMS
+    Note over CP,CS: Delete a specific certificate from the Charge Point
+    Note over CP,CS: Steps 1-8 repeated for each hash algorithm (SHA256, SHA384, SHA512)
+
+    Note over CP,CS: Phase 1: Install CentralSystemRootCertificate 2
+
+    CS->>CP: 1. InstallCertificate.req
+    Note right of CS: certificateType = CentralSystemRootCertificate<br/>certificate = CentralSystemRootCertificate 2
+
+    CP-->>CS: 2. InstallCertificate.conf
+    Note left of CP: status = Accepted
+
+    Note over CP,CS: Phase 2: Delete the just installed certificate
+
+    CS->>CP: 3. GetInstalledCertificateIds.req
+    Note right of CS: Confirm hashAlgorithm for deletion
+
+    CP-->>CS: 4. GetInstalledCertificateIds.conf
+    Note left of CP: status = Accepted<br/>certificateHashData.hashAlgorithm = <hash alg>
+
+    CS->>CP: 5. DeleteCertificate.req
+    Note right of CS: hashAlgorithm = <from step 4><br/>certificateHashData = <installed cert info>
+
+    CP-->>CS: 6. DeleteCertificate.conf
+    Note left of CP: status = Accepted
+
+    CS->>CP: 7. GetInstalledCertificateIds.req (optional)
+    Note right of CS: Confirm certificate was deleted
+
+    CP-->>CS: 8. GetInstalledCertificateIds.conf

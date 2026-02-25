@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_051_CSMS
+    Note over CP,CS: Cancel Reservation
+    Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
+
+    CS->>CP: 1. ReserveNow.req
+    Note left of CS: connectorId: <non-zero><br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: <future timestamp>
+    Note left of CS: Validation: connectorId must not equal 0
+
+    CP-->>CS: 2. ReserveNow.conf (status: Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 3. StatusNotification.req (status: Reserved)
+    Note over CP: Validation: status must be Reserved
+    CS-->>CP: 4. StatusNotification.conf
+
+    CS->>CP: 5. CancelReservation.req
+    Note left of CS: reservationId: same as step 1
+    Note left of CS: Validation: reservationId must match step 1
+
+    CP-->>CS: 6. CancelReservation.conf (status: Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 7. StatusNotification.req (status: Available)
+    Note over CP: Validation: status must be Available
+    CS-->>CP: 8. StatusNotification.conf

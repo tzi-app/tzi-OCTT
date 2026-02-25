@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case TC_001_CSMS: Cold Boot Charge Point
+    Note over CP,CS: OCPP 1.6j - Chapter 3.1
+
+    CP->>CS: BootNotification.req
+    Note right of CP: chargePointVendor, chargePointModel, etc.
+
+    CS-->>CP: BootNotification.conf
+    Note over CS: Validation: status MUST be "Accepted"
+    Note left of CS: status = Accepted, interval = x seconds, currentTime
+
+    loop For each connector (including connectorId=0)
+        CP->>CS: StatusNotification.req
+        Note right of CP: connectorId, status = Available, errorCode = NoError
+        CS-->>CP: StatusNotification.conf
+    end
+
+    Note over CP,CS: Validation: StatusNotification.req status MUST be "Available"
+
+    loop Every x seconds (interval from BootNotification.conf)
+        CP->>CS: Heartbeat.req
+        CS-->>CP: Heartbeat.conf
+        Note left of CS: currentTime
+    end
+
+    Note over CP,CS: Validation: Heartbeat interval must equal interval from BootNotification.conf

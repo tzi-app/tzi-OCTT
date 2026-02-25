@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_026_CSMS: Remote Start Charging Session – Rejected
+    Note over CP,CS: OCPP 1.6J - Core Profile
+    Note over CP,CS: Prerequisite: n/a
+
+    Note right of CS: The CPO remotely requests<br/>a start transaction
+
+    CS->>CP: 1. RemoteStartTransaction.req
+    Note left of CS: idTag: <IdToken>
+
+    CP-->>CS: 2. RemoteStartTransaction.conf
+    Note right of CP: status: Rejected
+
+    Note over CS: Validation: status must be Rejected

@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_012_CSMS (Table 132, p.117-118/176)
+    Note over CP,CS: Remote Stop Charging Session
+    Note over CP,CS: Prerequisite: Reusable State: Charging (Table 201, requires Authorized)
+
+    CS->>CP: 1. RemoteStopTransaction.req (transactionId)
+    CP-->>CS: 2. RemoteStopTransaction.conf (status=Accepted)
+    Note over CP: Validation: status must be Accepted
+
+    CP->>CS: 3. StopTransaction.req (transactionId, meterStop, timestamp, reason=Remote)
+    CS-->>CP: 4. StopTransaction.conf
+    Note over CP: Validation: reason must be Remote
+
+    CP->>CS: 5. StatusNotification.req (status=Finishing, errorCode=NoError)
+    CS-->>CP: 6. StatusNotification.conf
+    Note over CP: Validation: status must be Finishing
+
+    Note over CP: [EV driver unplugs the cable]
+
+    CP->>CS: 7. StatusNotification.req (status=Available, errorCode=NoError)
+    CS-->>CP: 8. StatusNotification.conf
+    Note over CP: Validation: status must be Available

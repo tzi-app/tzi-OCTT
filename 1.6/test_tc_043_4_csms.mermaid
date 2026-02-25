@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_043_4_CSMS: Send Local Authorization List - Full
+    Note over CP,CS: Prerequisite: Central System supports Local Auth List Management
+    Note over CP,CS: Prerequisite: Central System has at least 1 IdToken
+
+    CS->>CP: SendLocalList.req (updateType = Full, localAuthorizationList with idTagInfo)
+    Note over CS: Validation: UpdateType should be Full
+    Note over CS: Validation: All localAuthorizationList entries have an idTagInfo
+
+    CP-->>CS: SendLocalList.conf (status = Accepted)
+    Note over CP: Validation: status is Accepted
+
+    Note over CP,CS: Central System successfully sent a full local authorization list

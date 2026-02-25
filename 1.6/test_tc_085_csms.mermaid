@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_085_CSMS
+    Note over CP,CS: Basic Authentication - Valid username/password combination
+    Note over CP,CS: Prerequisite: Central System supports security profile 1 and/or 2
+
+    CP->>CS: 1. HTTP Upgrade Request (without Authorization header)
+    CS-->>CP: 2. Connection upgrade request REJECTED
+
+    CP->>CS: 3. HTTP Upgrade Request (with Authorization header)
+    Note left of CP: Authorization: Basic Base64(username:password)
+
+    CS->>CS: Validate username/password
+    CS-->>CP: 4. Accept connection upgrade request
+
+    CP->>CS: 5. BootNotification.req
+    CS-->>CP: 6. BootNotification.conf
+
+    CP->>CS: 7. StatusNotification.req (per connector, connectorId=0)
+    CS-->>CP: 8. StatusNotification.conf
+
+    Note over CP,CS: Password format: hex (32-40 chars) or plaintext UTF-8 (16-20 chars)

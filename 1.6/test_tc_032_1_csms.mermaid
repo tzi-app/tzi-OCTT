@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_032_1_CSMS: Power failure boot - configured to stop transaction(s)
+    Note over CP,CS: Precondition: An ongoing charging transaction exists on a connector
+
+    Note over CP: Power failure occurs
+    CP-xCS: [Connection lost - power disconnected]
+    Note over CP: Power restored - Charge Point reboots
+
+    CP->>CS: 1. BootNotification.req
+    CS-->>CP: 2. BootNotification.conf (status = Accepted)
+    Note over CS: Validation: status must be Accepted
+
+    Note over CP: Send StatusNotification per connector and connectorId = 0
+
+    CP->>CS: 3. StatusNotification.req (connectorId = <transaction connector>, status = Finishing)
+    CS-->>CP: 4. StatusNotification.conf
+    Note over CP: Validation: connector with ongoing transaction reports Finishing
+
+    CP->>CS: 3. StatusNotification.req (connectorId = 0, status = Available)
+    CS-->>CP: 4. StatusNotification.conf
+
+    CP->>CS: 3. StatusNotification.req (other connectors, status = Available)
+    CS-->>CP: 4. StatusNotification.conf
+    Note over CP: Validation: all other connectors report Available
+
+    CP->>CS: 5. StopTransaction.req (reason = PowerLoss)
+    CS-->>CP: 6. StopTransaction.conf
+    Note over CP: Validation: reason must be PowerLoss

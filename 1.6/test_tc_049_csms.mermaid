@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_049_CSMS (Table 172, page 146)
+    Note over CP,CS: Reservation of a Charge Point - Transaction
+    Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
+
+    CS->>CP: 1. ReserveNow.req
+    Note left of CS: reservationId: <unique id><br/>connectorId: 0<br/>idTag: <Configured Valid IdTag><br/>expiryDate: <future timestamp> (*)
+    Note left of CS: Validation: connectorId must be 0
+
+    CP-->>CS: 2. ReserveNow.conf
+
+    CP->>CS: 3. StatusNotification.req (status: Reserved)
+    Note over CP: Validation: status must be Reserved
+    CS-->>CP: 4. StatusNotification.conf
+
+    Note over CP,CS: Expected: Only the idTag from the reservation<br/>can charge, on any available connector.<br/>CS accepts reservation for the right idTag and reservationId.
+    Note over CP,CS: (*) expiryDate required by OCPP spec but not<br/>explicitly listed in the document's scenario step 1

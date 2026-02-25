@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_081_CSMS
+    Note over CP,CS: Secure Firmware Update - Invalid Signature
+    Note over CP,CS: Prerequisites: Firmware Management profile + security profile
+
+    CS->>CP: 1. SignedUpdateFirmware.req
+    Note right of CS: firmware.location = <Firmware Download URL from test data><br/>firmware.signature = <An invalid signature.>
+
+    CP-->>CS: 2. SignedUpdateFirmware.conf
+
+    Note over CP: Charge Point starts downloading firmware
+
+    CP->>CS: 3. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Downloading
+    CS-->>CP: 4. SignedFirmwareStatusNotification.conf
+
+    Note over CP: Charge Point finishes downloading firmware
+
+    CP->>CS: 5. SignedFirmwareStatusNotification.req
+    Note left of CP: status = Downloaded
+    CS-->>CP: 6. SignedFirmwareStatusNotification.conf
+
+    Note over CP: Charge Point verifies signature<br/>and deems it INVALID
+
+    CP->>CS: 7. SignedFirmwareStatusNotification.req
+    Note left of CP: status = InvalidSignature
+    CS-->>CP: 8. SignedFirmwareStatusNotification.conf
+
+    Note over CP,CS: Firmware rejected due to invalid signature

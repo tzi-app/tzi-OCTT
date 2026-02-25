@@ -1,0 +1,44 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_083_CSMS
+    Note over CP,CS: Upgrade Charge Point Security Profile - Accepted
+    Note over CP,CS: Prerequisite: SP 1 and/or 3 supported, current SP is 1 or 2
+
+    Note over CP,CS: Manual Action: Send ChangeConfiguration for SecurityProfile
+
+    CS->>CP: 1. ChangeConfiguration.req
+    Note right of CS: key = SecurityProfile<br/>value = <current SP + 1>
+
+    CP-->>CS: 2. ChangeConfiguration.conf
+    Note left of CP: status = Accepted
+
+    Note over CP,CS: Manual Action: Send Reset of type Hard
+
+    CS->>CP: 3. Reset.req
+    Note right of CS: type = Hard
+
+    CP-->>CS: 4. Reset.conf
+    Note left of CP: status = Accepted
+
+    CP->>CS: 5. Reconnect with securityProfile + 1
+    CS-->>CP: 6. Accept connection attempt
+
+    CP->>CS: 7. BootNotification.req
+    CS-->>CP: 8. BootNotification.conf
+    Note right of CS: status = Accepted
+
+    CP->>CS: 9. StatusNotification.req (per connector, connectorId=0)
+    Note left of CP: status = Available
+    CS-->>CP: 10. StatusNotification.conf
+
+    Note over CP,CS: Verify old security profile is rejected
+
+    CP->>CS: 11. Reconnect with original securityProfile
+    CS--xCP: 12. Central System rejects connection attempt
+
+    Note over CP,CS: Restore connection with upgraded profile
+
+    CP->>CS: 13. Reconnect with securityProfile + 1
+    CS-->>CP: 14. Central System accepts connection attempt

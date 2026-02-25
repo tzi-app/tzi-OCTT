@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_021_CSMS: Change/set Configuration
+    Note over CP,CS: Section 3.7.3 - Core Profile - Configuration Happy Flow
+    Note over CP,CS: Table 140, page 125
+
+    CS->>CP: 1. ChangeConfiguration.req (key = MeterValueSampleInterval, value = 60)
+
+    CP-->>CS: 2. ChangeConfiguration.conf (status = Accepted)
+
+    Note over CS: Validation Step 1: key MUST be "MeterValueSampleInterval", value MUST be "60"
+    Note over CP: Validation Step 2: status MUST be "Accepted"

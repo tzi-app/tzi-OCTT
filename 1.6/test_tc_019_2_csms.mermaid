@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_019_2_CSMS: Retrieve specific configuration key
+    Note over CP,CS: Section 3.7.2 - Core Profile - Configuration Happy Flow
+
+    CS->>CP: 1. GetConfiguration.req (key = SupportedFeatureProfiles)
+
+    CP-->>CS: 2. GetConfiguration.conf (configurationKey.key = SupportedFeatureProfiles)
+
+    Note over CP,CS: Validation: unknownKey list MUST be empty<br/>configurationKey.key should be "SupportedFeatureProfiles"<br/>(NOTE: doc uses "should be", treating as MUST for test)

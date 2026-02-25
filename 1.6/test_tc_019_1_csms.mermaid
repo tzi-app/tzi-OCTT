@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_019_1_CSMS: Retrieve all configuration keys
+    Note over CP,CS: Section 3.7.1 - Core Profile - Configuration Happy Flow
+
+    CS->>CP: 1. GetConfiguration.req (key = empty)
+    Note right of CS: No specific keys requested → retrieve all
+
+    CP-->>CS: 2. GetConfiguration.conf (configurationKey = [...all keys...])
+
+    Note over CP,CS: Validation: Response must contain all required<br/>configuration keys from Core, Local Auth List Management,<br/>and Smart Charging profiles with correct accessibility (R/RW)

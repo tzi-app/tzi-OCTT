@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Test Case: TC_075_2_CSMS
+    Note over CP,CS: Install a certificate - CentralSystemRootCertificate
+    Note over CP,CS: Prerequisite: Central System supports Security profile 2 and/or 3
+
+    CS->>CP: 1. InstallCertificate.req
+    Note right of CS: certificateType = CentralSystemRootCertificate<br/>certificate = <Configured root certificate>
+
+    CP-->>CS: 2. InstallCertificate.conf
+    Note left of CP: status = Accepted
+
+    CS->>CP: 3. GetInstalledCertificateIds.req
+    Note right of CS: certificateType = CentralSystemRootCertificate
+
+    CP-->>CS: 4. GetInstalledCertificateIds.conf
+    Note left of CP: status = Accepted<br/>certificateHashData = <installed cert info>
+
+    Note over CP,CS: Note: Must use a Root CA certificate<br/>for correct OCTT response

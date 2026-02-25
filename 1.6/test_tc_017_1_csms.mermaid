@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CP as Charge Point (OCTT)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: TC_017_1_CSMS: Unlock connector - no charging session running (Not fixed cable)
+    Note over CP,CS: Prerequisite: n/a
+
+    CS->>CP: 1. UnlockConnector.req (connectorId)
+    CP-->>CS: 2. UnlockConnector.conf (status = Unlocked)
+
+    Note over CP,CS: Validation: UnlockConnector.conf status MUST be "Unlocked"

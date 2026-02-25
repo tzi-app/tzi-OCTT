@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CP as Charge Point (Tool)
+    participant CS as Central System (SUT)
+
+    Note over CP,CS: Memory State: RenewChargePointCertificate (Table 204, pp.175-176)
+    Note over CP,CS: OCPP 1.6J (Security Extension)
+    Note over CS: Optional config: CpoName = <Configured Vendor Name>
+
+    CS->>CP: 1. ExtendedTriggerMessage.req
+    Note left of CS: requestedMessage = SignChargePointCertificate<br/>connectorId = <Omitted>
+
+    CP-->>CS: 2. ExtendedTriggerMessage.conf
+    Note over CP: Validation: status should be Accepted
+
+    Note over CP: Charge Point generates new<br/>public/private key pair and CSR
+
+    CP->>CS: 3. SignCertificate.req
+    Note right of CP: (doc does not list fields;<br/>expected: csr = <PEM-encoded CSR>)
+
+    CS-->>CP: 4. SignCertificate.conf
+    Note left of CS: status = Accepted
+
+    Note over CS: Certificate Authority<br/>signs the certificate
+
+    CS->>CP: 5. CertificateSigned.req
+    Note left of CS: (doc does not list fields;<br/>expected: certificateChain = <PEM-encoded chain>)
+
+    CP-->>CS: 6. CertificateSigned.conf
+    Note over CP: Validation: status should be Accepted
+    Note over CP: Charge Point verifies the validity<br/>of the signed certificate
+
+    Note over CP,CS: State is RenewChargePointCertificate
