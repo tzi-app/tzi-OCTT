@@ -62,3 +62,60 @@ Tool Validations
 
 Expected result(s) / behaviour: n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_076(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Steps 1-8 repeated for each hash algorithm (SHA256, SHA384, SHA512)
+    hash_algorithms = ['SHA256', 'SHA384', 'SHA512']
+
+    for iteration, hash_algo in enumerate(hash_algorithms):
+        # Step 1-2: Wait for CSMS to send InstallCertificate.req
+        if iteration > 0:
+            cp._received_install_certificate.clear()
+        await asyncio.wait_for(cp._received_install_certificate.wait(), timeout=ACTION_TIMEOUT)
+        assert cp._install_certificate_data is not None
+
+        # Prepare hash data response for GetInstalledCertificateIds
+        cp._installed_certificate_hash_data = [{
+            'hash_algorithm': hash_algo,
+            'issuer_name_hash': 'aabbccdd',
+            'issuer_key_hash': 'eeff0011',
+            'serial_number': f'SN{iteration}',
+        }]
+
+        # Step 3-4: Wait for CSMS to send GetInstalledCertificateIds.req
+        cp._received_get_installed_certificate_ids.clear()
+        await asyncio.wait_for(cp._received_get_installed_certificate_ids.wait(), timeout=ACTION_TIMEOUT)
+
+        # Step 5-6: Wait for CSMS to send DeleteCertificate.req
+        cp._received_delete_certificate.clear()
+        await asyncio.wait_for(cp._received_delete_certificate.wait(), timeout=ACTION_TIMEOUT)
+        assert cp._delete_certificate_data is not None
+        # Validate hash algorithm matches what we reported
+        assert cp._delete_certificate_data.get('hash_algorithm') == hash_algo
+
+        # Clear hash data after deletion
+        cp._installed_certificate_hash_data = []
+
+        # Step 7-8: Optional second GetInstalledCertificateIds (handled by handler automatically)
+
+    start_task.cancel()

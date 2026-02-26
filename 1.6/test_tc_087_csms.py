@@ -57,3 +57,56 @@ Tool Validations
 
 Expected result(s) / behaviour: n/a
 """
+
+import asyncio
+import os
+import pytest
+import websockets
+
+from ocpp.v16.enums import RegistrationStatus
+
+from charge_point import TziChargePoint16
+from utils import create_ssl_context
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
+
+
+@pytest.mark.asyncio
+async def test_tc_087():
+    # Create SSL context for mTLS connection (SP3: server + client cert)
+    ssl_ctx = create_ssl_context(
+        ca_cert=os.environ.get('TLS_CA_CERT'),
+        client_cert=os.environ.get('TLS_CLIENT_CERT'),
+        client_key=os.environ.get('TLS_CLIENT_KEY'),
+        check_hostname=False,
+    )
+
+    # Step 1-6: TLS handshake with client cert + WebSocket upgrade
+    ws = await websockets.connect(
+        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        subprotocols=['ocpp1.6'],
+        ssl=ssl_ctx,
+    )
+    assert ws.open
+
+    # Verify TLS version is 1.2 or above
+    ssl_obj = ws.transport.get_extra_info('ssl_object')
+    assert ssl_obj is not None
+    tls_version = ssl_obj.version()
+    assert tls_version in ('TLSv1.2', 'TLSv1.3')
+
+    cp = TziChargePoint16(BASIC_AUTH_CP, ws)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 7-8: BootNotification
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 9-10: StatusNotification per connector
+    for cid in (0, 1):
+        await cp.send_status_notification(cid)
+
+    start_task.cancel()
+    await ws.close()

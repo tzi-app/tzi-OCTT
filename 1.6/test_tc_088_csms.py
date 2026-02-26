@@ -43,3 +43,36 @@ Tool Validations
 
 Expected result(s) / behaviour: n/a
 """
+
+import asyncio
+import os
+import pytest
+import websockets
+from websockets import InvalidStatusCode
+
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+
+
+@pytest.mark.asyncio
+async def test_tc_088():
+    # Step 1-2: Only unsupported subprotocol -> rejected
+    with pytest.raises((InvalidStatusCode, Exception)):
+        await websockets.connect(
+            uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+            subprotocols=['ocpp0.1'],
+            extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
+        )
+
+    # Step 3-4: Unsupported + supported subprotocol -> accepted, selects ocpp1.6
+    ws = await websockets.connect(
+        uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+        subprotocols=['ocpp0.1', 'ocpp1.6'],
+        extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
+    )
+    assert ws.open
+    assert ws.subprotocol == 'ocpp1.6'
+    await ws.close()

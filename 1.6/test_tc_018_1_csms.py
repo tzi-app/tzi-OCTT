@@ -21,43 +21,16 @@ Before              Configuration State(s): n/a
                     Memory State(s): n/a
                     Reusable State(s): Charging
 
-Reusable State: Charging (Table 201, Page 174)
-    Description: Simulates the Charge Point starting a transaction.
-    Prerequisite: Authorized reusable state (Table 200, Page 173)
-
-    Authorized state (Table 200, Page 173):
-        No prerequisites.
-        1. CP sends Authorize.req (idTag = <Configured Valid IdTag>)
-        2. CS responds Authorize.conf
-        Validation: Step 2 - idTagInfo.status should be Accepted
-        Expected result: State is Authorized
-
-    Charging state (Table 201, Page 174):
-        Prerequisite: Authorized
-        1. CP sends StatusNotification.req (status=Preparing, connectorId=<Configured ConnectorId>)
-        2. CS responds StatusNotification.conf
-        3. CP sends StartTransaction.req (idTag=<Configured Valid IdTag>, connectorId=<Configured ConnectorId>)
-        4. CS responds StartTransaction.conf
-        5. CP sends StatusNotification.req (status=Charging, connectorId=<Configured ConnectorId>)
-        6. CS responds StatusNotification.conf
-        Validation: Step 4 - idTagInfo.status should be Accepted
-        Expected result: State is Charging
-
 Test Scenario
-    Charge Point (Tool)                           Central System (SUT)
-    1.                                            The Central System sends a UnlockConnector.req
-    2. The Charge Point responds with a
-       UnlockConnector.conf
-    3. The Charge Point sends a
-       StatusNotification.req                     4. The Central System responds with a
-                                                     StatusNotification.conf
-    5. The Charge Point sends a
-       StopTransaction.req                        6. The Central System responds with a
-                                                     StopTransaction.conf
+    1. The Central System sends a UnlockConnector.req
+    2. The Charge Point responds with a UnlockConnector.conf
+    3. The Charge Point sends a StatusNotification.req
+    4. The Central System responds with a StatusNotification.conf
+    5. The Charge Point sends a StopTransaction.req
+    6. The Central System responds with a StopTransaction.conf
     [EV driver unplugs the cable.]
-    7. The Charge Point sends a
-       StatusNotification.req                     8. The Central System responds with a
-                                                     StatusNotification.conf
+    7. The Charge Point sends a StatusNotification.req
+    8. The Central System responds with a StatusNotification.conf
 
 Tool Validations
     * Step 2 (UnlockConnector.conf):
@@ -70,28 +43,56 @@ Tool Validations
       - status is Available
 
 Expected result(s) / behaviour
-    Charge Point (Tool): n/a
-    Central System (SUT): n/a
-
-OCPP 1.6 Messages
-    UnlockConnector.req:
-        - connectorId (Required, integer): The identifier of the connector to be unlocked.
-    UnlockConnector.conf:
-        - status (Required, UnlockStatus): Indicates whether the connector has been unlocked.
-          Accepted values: Unlocked, UnlockFailed, NotSupported
-    StatusNotification.req:
-        - connectorId (Required, integer): The id of the connector.
-        - errorCode (Required, ChargePointErrorCode): The error code reported by the CP.
-        - status (Required, ChargePointStatus): The current status of the connector.
-          Relevant values: Finishing, Available
-    StatusNotification.conf:
-        - (empty payload)
-    StopTransaction.req:
-        - meterStop (Required, integer): Meter value in Wh at stop.
-        - timestamp (Required, dateTime): Time at which the transaction was stopped.
-        - transactionId (Required, integer): The transaction id as provided by StartTransaction.conf.
-        - reason (Optional, Reason): Reason for stopping the transaction.
-          Expected value: UnlockCommand
-    StopTransaction.conf:
-        - idTagInfo (Optional, IdTagInfo): Contains status info about the identifier.
+    n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus, Reason, UnlockStatus
+
+from charge_point import TziChargePoint16
+from reusable_states import booted, authorized, charging
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_018_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    cp._unlock_response_status = UnlockStatus.unlocked
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: Reusable State Charging (Booted → Authorized → Charging)
+    await booted(cp)
+    await authorized(cp, VALID_ID_TAG)
+    start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
+
+    # Step 1-2: Wait for CSMS to send UnlockConnector.req → CP responds Unlocked
+    await asyncio.wait_for(cp._received_unlock_connector.wait(), timeout=ACTION_TIMEOUT)
+
+    # Step 3-4: StatusNotification(Finishing)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.finishing)
+
+    # Step 5-6: StopTransaction with reason=UnlockCommand
+    stop_response = await cp.send_stop_transaction(
+        transaction_id=transaction_id,
+        reason=Reason.unlock_command,
+        id_tag=VALID_ID_TAG,
+    )
+    assert stop_response is not None
+
+    # Step 7-8: EV driver unplugs cable → StatusNotification(Available)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.available)
+
+    start_task.cancel()

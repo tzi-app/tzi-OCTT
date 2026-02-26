@@ -49,3 +49,40 @@ Expected result(s) n/a
 Post scenario validations:
     n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_007(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: EV driver plugs in cable → StatusNotification(Preparing)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.preparing)
+
+    # Step 3-4: StartTransaction with cached idTag (no prior Authorize.req)
+    start_response = await cp.send_start_transaction(CONNECTOR_ID, VALID_ID_TAG)
+    assert start_response.id_tag_info['status'] == AuthorizationStatus.accepted
+    assert start_response.transaction_id is not None
+
+    # Step 5-6: StatusNotification(Charging)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.charging)
+
+    start_task.cancel()

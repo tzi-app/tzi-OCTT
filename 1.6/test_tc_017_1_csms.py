@@ -19,23 +19,15 @@ Before              Configuration State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
-    Charge Point (Tool)                         Central System (SUT)
-    -----------------------------------------   -----------------------------------------
-                                                1. The Central System sends a
-                                                   UnlockConnector.req
-    2. The Charge Point responds with a
-       UnlockConnector.conf
+    1. The Central System sends a UnlockConnector.req
+    2. The Charge Point responds with a UnlockConnector.conf
 
 Tool Validations
-    Charge Point (Tool):
-        * Step 2 (Message: UnlockConnector.conf):
-          - status is "Unlocked"
-    Central System (SUT):
-        n/a
+    * Step 2 (Message: UnlockConnector.conf):
+      - status is "Unlocked"
 
 Expected result(s) / behaviour
-    Charge Point (Tool): n/a
-    Central System (SUT): n/a
+    n/a
 
 OCPP 1.6 Messages
     UnlockConnector.req:
@@ -44,3 +36,34 @@ OCPP 1.6 Messages
         - status (Required, UnlockStatus): Indicates whether the connector has been unlocked.
           Accepted values: Unlocked, UnlockFailed, NotSupported
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import UnlockStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_017_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # CP responds with Unlocked (default)
+    cp._unlock_response_status = UnlockStatus.unlocked
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send UnlockConnector.req → CP responds Unlocked
+    await asyncio.wait_for(cp._received_unlock_connector.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._unlock_connector_id is not None
+
+    start_task.cancel()

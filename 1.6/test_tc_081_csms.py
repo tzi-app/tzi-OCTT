@@ -56,3 +56,51 @@ Expected result(s) / behaviour:
     Charge Point: The Charge Point rejects the firmware, because of an invalid signature.
     Central System: The Central System receives and responds to the FirmwareStatusNotification messages.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import FirmwareStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_081(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send SignedUpdateFirmware.req
+    await asyncio.wait_for(cp._received_signed_update_firmware.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._signed_update_firmware_data is not None
+    request_id = cp._signed_update_firmware_data['request_id']
+
+    # Step 3-4: SignedFirmwareStatusNotification (Downloading)
+    await cp.send_signed_firmware_status_notification(
+        status=FirmwareStatus.downloading,
+        request_id=request_id,
+    )
+
+    # Step 5-6: SignedFirmwareStatusNotification (Downloaded)
+    await cp.send_signed_firmware_status_notification(
+        status=FirmwareStatus.downloaded,
+        request_id=request_id,
+    )
+
+    # Step 7-8: SignedFirmwareStatusNotification (InvalidSignature)
+    await cp.send_signed_firmware_status_notification(
+        status=FirmwareStatus.invalid_signature,
+        request_id=request_id,
+    )
+
+    start_task.cancel()

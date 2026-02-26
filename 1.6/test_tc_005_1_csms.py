@@ -20,8 +20,6 @@ Before
     Configuration State(s): n/a
     Memory State(s):        n/a
     Reusable State(s):      Charging
-        (TODO: verify exact definition of reusable state "Charging" - assumed to be an
-         active charging session reached via TC_003 or TC_004_1)
 
 Test Scenario
 1. [EV driver disconnects cable on EV side.]
@@ -51,3 +49,51 @@ Tool Validations
 
 Expected Result(s)  n/a (per official document)
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus, Reason
+
+from charge_point import TziChargePoint16
+from reusable_states import authorized, charging
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_005_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: Reusable State Charging (Authorized → Charging)
+    await authorized(cp, VALID_ID_TAG)
+    start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
+
+    # Step 1-2: EV driver disconnects cable on EV side → StatusNotification(SuspendedEV)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.suspended_ev)
+
+    # Step 3-4: StopTransaction with reason=EVDisconnected
+    stop_response = await cp.send_stop_transaction(
+        transaction_id=transaction_id,
+        reason=Reason.ev_disconnected,
+        id_tag=VALID_ID_TAG,
+    )
+    assert stop_response is not None
+
+    # Step 5-6: StatusNotification(Finishing)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.finishing)
+
+    # Step 7-8: EV driver unplugs cable from CP → StatusNotification(Available)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.available)
+
+    start_task.cancel()

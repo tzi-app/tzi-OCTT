@@ -45,3 +45,51 @@ Tool Validations
 Expected result(s) / behaviour: n/a
     NOTE: Not explicitly listed in the CSMS version of the document; the corresponding CS version (TC_085_CS) shows n/a.
 """
+
+import asyncio
+import os
+import pytest
+import websockets
+from websockets import InvalidStatusCode
+
+from ocpp.v16.enums import RegistrationStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+
+
+@pytest.mark.asyncio
+async def test_tc_085_no_auth_rejected():
+    """Step 1-2: Connection without Authorization header is rejected."""
+    with pytest.raises(InvalidStatusCode) as exc:
+        await websockets.connect(
+            uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+            subprotocols=['ocpp1.6'],
+            extra_headers={},
+        )
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_085(connection):
+    """Step 3-8: Connection with valid auth succeeds, BootNotification + StatusNotification."""
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 5-6: BootNotification
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 7-8: StatusNotification per connector (connectorId=0 and connectorId=1)
+    for cid in (0, 1):
+        await cp.send_status_notification(cid)
+
+    start_task.cancel()

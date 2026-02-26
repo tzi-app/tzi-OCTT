@@ -35,3 +35,41 @@ Tool validations
 Expected result(s) / behaviour
     The Central System is able to send a local list.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import UpdateStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_043_4(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # CP responds Accepted for SendLocalList (Full)
+    cp._send_local_list_response_status = UpdateStatus.accepted
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send SendLocalList.req → CP responds Accepted
+    await asyncio.wait_for(cp._received_send_local_list.wait(), timeout=ACTION_TIMEOUT)
+    # Validate updateType is Full
+    assert cp._send_local_list_data['update_type'] == 'Full'
+
+    # Validate all localAuthorizationList entries have an idTagInfo
+    auth_list = cp._send_local_list_data.get('local_authorization_list') or []
+    assert len(auth_list) > 0, "localAuthorizationList should not be empty"
+    for entry in auth_list:
+        assert 'id_tag_info' in entry, f"Entry missing idTagInfo: {entry}"
+
+    start_task.cancel()

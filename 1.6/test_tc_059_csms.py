@@ -98,3 +98,72 @@ official document - "Response acknowledged" is inferred.
 NOTE: "csChargingProfiles" in the tool validations appears to be the document's alias for the
 chargingProfile field in the RemoteStartTransaction.req - to be confirmed.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_059(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send RemoteStartTransaction.req with charging profile
+    await asyncio.wait_for(cp._received_remote_start.wait(), timeout=ACTION_TIMEOUT)
+    id_tag = cp._remote_start_id_tag
+    assert id_tag is not None
+    assert cp._remote_start_connector_id == CONNECTOR_ID
+
+    # Validate charging profile fields
+    profile = cp._remote_start_charging_profile
+    assert profile is not None
+    assert profile['charging_profile_purpose'] == 'TxProfile'
+    assert profile.get('transaction_id') is None  # must be omitted
+    assert profile.get('recurrency_kind') is None  # must be omitted
+
+    kind = profile['charging_profile_kind']
+    assert kind in ('Absolute', 'Relative')
+
+    schedule = profile['charging_schedule']
+    periods = schedule['charging_schedule_period']
+    assert len(periods) > 0
+    assert periods[0]['start_period'] == 0
+
+    if kind == 'Absolute':
+        assert profile.get('valid_from') is not None
+        assert profile.get('valid_to') is not None
+        assert schedule.get('start_schedule') is not None
+        assert schedule.get('duration') is not None
+    elif kind == 'Relative':
+        assert schedule.get('start_schedule') is None
+
+    # Step 3-4: Authorize with the idTag from remote start
+    auth_response = await cp.send_authorize(id_tag)
+    assert auth_response.id_tag_info['status'] == AuthorizationStatus.accepted
+
+    # Step 5-6: StatusNotification(Preparing)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.preparing)
+
+    # Step 7-8: StartTransaction
+    start_response = await cp.send_start_transaction(CONNECTOR_ID, id_tag)
+    assert start_response.id_tag_info['status'] == AuthorizationStatus.accepted
+
+    # Step 9-10: StatusNotification(Charging)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.charging)
+
+    start_task.cancel()

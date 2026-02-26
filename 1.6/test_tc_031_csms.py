@@ -42,3 +42,34 @@ Tool validations
 Expected result(s) / behaviour
     n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import UnlockStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_031(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # Unknown connector → CP responds NotSupported
+    cp._unlock_response_status = UnlockStatus.not_supported
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send UnlockConnector.req → CP responds NotSupported
+    await asyncio.wait_for(cp._received_unlock_connector.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._unlock_connector_id is not None
+
+    start_task.cancel()

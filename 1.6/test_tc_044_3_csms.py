@@ -84,3 +84,57 @@ Tool validations
 
 Expected result(s) / behaviour: n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus, FirmwareStatus, RegistrationStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_044_3(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send UpdateFirmware.req → CP responds with UpdateFirmware.conf
+    await asyncio.wait_for(cp._received_update_firmware.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._update_firmware_data is not None
+
+    # Step 3-4: CP sends FirmwareStatusNotification(Downloading)
+    await cp.send_firmware_status_notification(FirmwareStatus.downloading)
+
+    # Step 5-6: CP sends FirmwareStatusNotification(Downloaded)
+    await cp.send_firmware_status_notification(FirmwareStatus.downloaded)
+
+    # Step 7-8: CP reports StatusNotification(Unavailable) for all connectors
+    for cid in (0, CONNECTOR_ID):
+        await cp.send_status_notification(cid, status=ChargePointStatus.unavailable)
+
+    # Step 9-10: CP sends FirmwareStatusNotification(Installing)
+    await cp.send_firmware_status_notification(FirmwareStatus.installing)
+
+    # Step 11-12: CP reboots and sends BootNotification
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 13-14: CP reports StatusNotification(Available) for all connectors
+    for cid in (0, CONNECTOR_ID):
+        await cp.send_status_notification(cid, status=ChargePointStatus.available)
+
+    # Step 15-16: CP sends FirmwareStatusNotification(InstallationFailed)
+    await cp.send_firmware_status_notification(FirmwareStatus.installation_failed)
+
+    start_task.cancel()

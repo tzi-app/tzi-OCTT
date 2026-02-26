@@ -34,3 +34,34 @@ Expected result(s) / behaviour
                                                 list and is able to receive a NotSupported
                                                 response.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import UpdateStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_043_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # CP responds NotSupported for SendLocalList
+    cp._send_local_list_response_status = UpdateStatus.not_supported
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send SendLocalList.req → CP responds NotSupported
+    await asyncio.wait_for(cp._received_send_local_list.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._send_local_list_data['update_type'] == 'Full'
+
+    start_task.cancel()

@@ -101,3 +101,94 @@ Tool Validations
 Expected result(s) / behaviour:
     The Charge Point and the Central System are connected.
 """
+
+import asyncio
+import os
+import pytest
+import websockets
+from websockets import InvalidStatusCode
+
+from ocpp.v16.enums import RegistrationStatus, ResetType
+
+from charge_point import TziChargePoint16
+from utils import create_ssl_context, get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_083(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send ChangeConfiguration.req for SecurityProfile
+    await asyncio.wait_for(cp._received_change_configuration.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._change_configuration_key == 'SecurityProfile'
+    assert cp._change_configuration_value in ('2', '3')
+
+    # Step 3-4: Wait for CSMS to send Reset.req (Hard)
+    await asyncio.wait_for(cp._received_reset.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._reset_type == ResetType.hard
+
+    start_task.cancel()
+    await connection.close()
+
+    # Step 5-6: Reconnect with higher security profile (TLS/WSS)
+    ssl_ctx = create_ssl_context(
+        ca_cert=os.environ.get('TLS_CA_CERT'),
+        client_cert=os.environ.get('TLS_CLIENT_CERT'),
+        client_key=os.environ.get('TLS_CLIENT_KEY'),
+        check_hostname=False,
+    )
+    ws = await websockets.connect(
+        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        subprotocols=['ocpp1.6'],
+        ssl=ssl_ctx,
+        extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
+    )
+    assert ws.open
+
+    cp2 = TziChargePoint16(BASIC_AUTH_CP, ws)
+    start_task2 = asyncio.create_task(cp2.start())
+
+    # Step 7-8: BootNotification
+    boot_response = await cp2.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 9-10: StatusNotification(Available) per connector and connectorId=0
+    for cid in (0, 1):
+        await cp2.send_status_notification(cid)
+
+    start_task2.cancel()
+    await ws.close()
+
+    # Step 11-12: Reconnect with old security profile — CSMS rejects
+    try:
+        old_ws = await websockets.connect(
+            uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+            subprotocols=['ocpp1.6'],
+            extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
+        )
+        # If connection succeeded, the CSMS should have rejected it
+        await old_ws.close()
+        pytest.fail("CSMS should have rejected connection with old security profile")
+    except (InvalidStatusCode, Exception):
+        pass  # Expected: connection rejected
+
+    # Step 13-14: Reconnect with higher security profile (restore connection)
+    ws2 = await websockets.connect(
+        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        subprotocols=['ocpp1.6'],
+        ssl=ssl_ctx,
+        extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
+    )
+    assert ws2.open
+    await ws2.close()

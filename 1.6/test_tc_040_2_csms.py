@@ -50,3 +50,34 @@ OCPP 1.6 Reference
     ChangeConfiguration.conf is the Charge Point's response.
     MeterValueSampleInterval: interval (in seconds) between sampling of metering (or other) data.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ConfigurationStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_040_2(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # CP responds Rejected for invalid configuration value
+    cp._change_configuration_response_status = ConfigurationStatus.rejected
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send ChangeConfiguration.req → CP responds Rejected
+    await asyncio.wait_for(cp._received_change_configuration.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._change_configuration_key == 'MeterValueSampleInterval'
+
+    start_task.cancel()

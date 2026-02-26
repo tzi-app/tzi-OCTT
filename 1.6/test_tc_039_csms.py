@@ -55,3 +55,42 @@ Tool validations
 Expected result(s) / behaviour
     n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import AuthorizationStatus, Reason
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_039(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: StartTransaction with valid idTag (offline scenario)
+    start_response = await cp.send_start_transaction(CONNECTOR_ID, VALID_ID_TAG)
+    assert start_response.id_tag_info['status'] == AuthorizationStatus.accepted
+    transaction_id = start_response.transaction_id
+
+    # Step 3-4: StopTransaction with reason=Local
+    stop_response = await cp.send_stop_transaction(
+        transaction_id=transaction_id,
+        reason=Reason.local,
+        id_tag=VALID_ID_TAG,
+    )
+    assert stop_response is not None
+
+    start_task.cancel()

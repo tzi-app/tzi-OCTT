@@ -81,3 +81,93 @@ Expected result(s) / behaviour:
     Charge Point (Tool): n/a
     Central System (SUT): The Central System was able to clear the ChargingProfile of the Charge Point.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargingProfileStatus, ClearChargingProfileStatus
+
+from charge_point import TziChargePoint16
+from reusable_states import booted, authorized, charging
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_067(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: Bring CP into Charging state
+    await booted(cp)
+    await authorized(cp, VALID_ID_TAG)
+    start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
+
+    # Steps 1-2: Wait for 3 SetChargingProfile.req messages and capture each
+    profiles = []
+    for i in range(3):
+        if i > 0:
+            cp._received_set_charging_profile.clear()
+        await asyncio.wait_for(cp._received_set_charging_profile.wait(), timeout=ACTION_TIMEOUT)
+        profiles.append(cp._set_charging_profile_data)
+
+    assert cp._set_charging_profile_count >= 3
+
+    # Validate profile 1: ChargePointMaxProfile on connector 0
+    assert profiles[0]['connector_id'] == 0
+    assert profiles[0]['cs_charging_profiles']['charging_profile_purpose'] == 'ChargePointMaxProfile'
+    assert profiles[0]['cs_charging_profiles'].get('transaction_id') is None
+
+    # Validate profile 2: TxDefaultProfile on configured connector
+    assert profiles[1]['connector_id'] == CONNECTOR_ID
+    assert profiles[1]['cs_charging_profiles']['charging_profile_purpose'] == 'TxDefaultProfile'
+    assert profiles[1]['cs_charging_profiles'].get('transaction_id') is None
+
+    # Validate profile 3: TxProfile on configured connector with transactionId
+    assert profiles[2]['connector_id'] == CONNECTOR_ID
+    assert profiles[2]['cs_charging_profiles']['charging_profile_purpose'] == 'TxProfile'
+    assert profiles[2]['cs_charging_profiles'].get('transaction_id') == transaction_id
+
+    # All charging profile IDs must be different
+    profile_ids = [p['cs_charging_profiles']['charging_profile_id'] for p in profiles]
+    assert len(set(profile_ids)) == 3
+
+    # Steps 3-8: Wait for 3 ClearChargingProfile.req messages and validate each
+    clears = []
+    for i in range(3):
+        if i > 0:
+            cp._received_clear_charging_profile.clear()
+        await asyncio.wait_for(cp._received_clear_charging_profile.wait(), timeout=ACTION_TIMEOUT)
+        clears.append(cp._clear_charging_profile_data)
+
+    assert cp._clear_charging_profile_count >= 3
+
+    # Clear 1: by ID (profile 1's chargingProfileId), other fields omitted
+    assert clears[0]['id'] == profile_ids[0]
+    assert clears[0].get('connector_id') is None
+    assert clears[0].get('charging_profile_purpose') is None
+    assert clears[0].get('stack_level') is None
+
+    # Clear 2: by criteria (connectorId + purpose + stackLevel, no id)
+    assert clears[1].get('id') is None
+    assert clears[1]['connector_id'] == CONNECTOR_ID
+    assert clears[1]['charging_profile_purpose'] == 'TxDefaultProfile'
+    assert clears[1]['stack_level'] is not None
+
+    # Clear 3: all fields omitted (clear all remaining)
+    assert clears[2].get('id') is None
+    assert clears[2].get('connector_id') is None
+    assert clears[2].get('charging_profile_purpose') is None
+    assert clears[2].get('stack_level') is None
+
+    start_task.cancel()

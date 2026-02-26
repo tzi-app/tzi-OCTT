@@ -19,7 +19,6 @@ Before
     Reusable State(s):      Authorized (Table 200, page 173/176)
         Definition: CP sends Authorize.req with idTag = <Configured Valid IdTag>,
         CS responds with Authorize.conf where idTagInfo.status should be Accepted.
-        NOTE: <Configured Valid IdTag> - exact value to be configured (TBD).
 
 Test Scenario
 1. The Charge Point sends a StatusNotification.req
@@ -39,20 +38,45 @@ Expected Result(s)  n/a
 OCPP 1.6 Messages Used:
     - StatusNotification.req / StatusNotification.conf
 
-Key Fields:
-    StatusNotification.req:
-        - connectorId (Integer, required, >= 0; 0 = Charge Point main controller)
-        - errorCode (ChargePointErrorCode, required; e.g. NoError)
-        - status (ChargePointStatus: Available | Preparing | Charging | SuspendedEVSE |
-                  SuspendedEV | Finishing | Reserved | Unavailable | Faulted)
-        - timestamp (dateTime, optional)
-
-    StatusNotification.conf:
-        - (empty payload)
-
 Configuration Keys:
     - ConnectionTimeOut (Integer, seconds): The time in seconds after which the Charge Point
-      will revert to Available if no cable is plugged in after authorization. This is a
-      standard OCPP 1.6 configuration key that can be read/set via GetConfiguration /
-      ChangeConfiguration.
+      will revert to Available if no cable is plugged in after authorization.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus
+
+from charge_point import TziChargePoint16
+from reusable_states import authorized
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_004_2(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: Reusable State Authorized (Table 200)
+    await authorized(cp, VALID_ID_TAG)
+
+    # Step 1-2: StatusNotification(Preparing) - connector waiting for cable
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.preparing)
+
+    # [connectionTimeOut expires - no cable plugged in]
+
+    # Step 3-4: StatusNotification(Available) - connector reverts
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.available)
+
+    start_task.cancel()

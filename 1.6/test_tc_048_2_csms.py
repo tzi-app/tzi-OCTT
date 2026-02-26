@@ -53,3 +53,39 @@ Expected result(s):
     CP: n/a
     CS: The Central System accepts the Reservation message with the not Accepted status.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus, ReservationStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_048_2(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Set CP to respond with Occupied status for the upcoming ReserveNow
+    cp._reserve_now_response_status = ReservationStatus.occupied
+
+    # Step 1-2: EV driver plugs in cable → CP sends StatusNotification(Preparing)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.preparing)
+
+    # Step 3-4: Wait for CSMS to send ReserveNow.req → CP responds Occupied
+    await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._reserve_now_data is not None
+
+    start_task.cancel()

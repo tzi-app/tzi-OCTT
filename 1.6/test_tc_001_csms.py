@@ -93,3 +93,48 @@ Key Fields (supplementary - from OCPP 1.6 spec, not from test case document):
     Heartbeat.conf:
         - currentTime (dateTime, required)
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import RegistrationStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_001(connection):
+    # Step 0: Verify WebSocket connection was established
+    assert connection.open
+
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Send BootNotification.req, expect Accepted
+    boot_response = await cp.send_boot_notification()
+    assert boot_response is not None
+    assert boot_response.status == RegistrationStatus.accepted
+    assert boot_response.current_time is not None
+    assert boot_response.interval is not None
+    assert boot_response.interval > 0
+
+    # Step 3-4: Send StatusNotification.req per connector (connectorId=0 and connectorId=1)
+    #           with status=Available
+    for connector_id in (0, 1):
+        status_response = await cp.send_status_notification(connector_id)
+        assert status_response is not None
+
+    # Step 5-6: Send Heartbeat.req, expect currentTime in response
+    heartbeat_response = await cp.send_heartbeat()
+    assert heartbeat_response is not None
+    assert heartbeat_response.current_time is not None
+
+    start_task.cancel()

@@ -62,3 +62,52 @@ NOTE (to be fixed later):
     - Step 5 validation says "The reservationId is the reservationId from step 1" but it is unclear
       which specific message field this refers to (likely StartTransaction.req.reservationId).
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
+
+from charge_point import TziChargePoint16
+from reusable_states import authorized
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_046(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send ReserveNow.req → CP responds Accepted
+    await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._reserve_now_data is not None
+
+    # Capture reservationId from step 1
+    reservation_id = cp._reserve_now_data['reservation_id']
+
+    # Step 3-4: CP sends StatusNotification(Reserved)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.reserved)
+
+    # Step 5: Execute Reusable State: Authorized + Charging (with reservationId from step 1)
+    await authorized(cp, VALID_ID_TAG)
+
+    # Charging sub-flow (inline to pass reservation_id to StartTransaction)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.preparing)
+    start_response = await cp.send_start_transaction(
+        CONNECTOR_ID, VALID_ID_TAG, reservation_id=reservation_id,
+    )
+    assert start_response.id_tag_info['status'] == AuthorizationStatus.accepted
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.charging)
+
+    start_task.cancel()
