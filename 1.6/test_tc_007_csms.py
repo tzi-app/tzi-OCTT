@@ -3,7 +3,7 @@ Test case name      Regular Start Charging Session – Cached Id
 Test case Id        TC_007_CSMS
 OCPP version        1.6J
 Chapter             3.3 Cache (3.3.1)
-Doc reference       CompliancyTestTool-TestCaseDocument, Table 127, Section 3.3.1, p.113
+Doc reference       CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Table 127, Section 3.3.1, p.113
 
 System under test   Central System
 
@@ -20,34 +20,26 @@ Before              Configuration State(s): n/a
 
 Test Scenario
     [EV driver plugs in the cable.]
-    1. The Charge Point sends a StatusNotification.req to the Central System with status=Preparing,
-       connectorId=1, errorCode=NoError.
+    1. The Charge Point sends a StatusNotification.req.
     2. The Central System responds with a StatusNotification.conf.
     [EV driver presents identification.]
-    3. The Charge Point sends a StartTransaction.req to the Central System with connectorId=1,
-       idTag=<cached_id_tag>, meterStart=0, timestamp=<current_timestamp>.
-       The idTag used MUST be one that is present in the Charge Point's Authorization cache.
-    4. The Central System responds with a StartTransaction.conf containing idTagInfo.status=Accepted
-       and a transactionId.
-    5. The Charge Point sends a StatusNotification.req to the Central System with status=Charging,
-       connectorId=1, errorCode=NoError.
+    3. The Charge Point sends a StartTransaction.req.
+    4. The Central System responds with a StartTransaction.conf.
+    5. The Charge Point sends a StatusNotification.req.
     6. The Central System responds with a StatusNotification.conf.
 
 Tool validation(s)
-    * Step 1:
+    * Step 1 (Charge Point / Tool side):
         (Message: StatusNotification.req)
         - status is Preparing
-    * Step 4:
+    * Step 4 (Central System / SUT side):
         (Message: StartTransaction.conf)
         - idTagInfo.status is Accepted
-    * Step 5:
+    * Step 5 (Charge Point / Tool side):
         (Message: StatusNotification.req)
         - status is Charging
 
 Expected result(s) n/a
-
-Post scenario validations:
-    n/a
 """
 
 import asyncio

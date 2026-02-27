@@ -2,7 +2,7 @@
 Test case name      Get Local List Version (empty)
 Test case Id        TC_042_2_CSMS
 System under test   Central System
-Document reference  Table 156, page 135/176
+Document reference  Section 3.14.1, Table 156, page 135/176
 
 Description         The Central System can request a Charge Point for the version number of the
                     Local Authorization List.

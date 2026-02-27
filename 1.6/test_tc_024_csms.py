@@ -3,14 +3,13 @@ Test case name      Start Charging Session Lock Failure
 Test case Id        TC_024_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.8.4 - Core Profile - Authorization Error Handling
+Section             3.8.4 - Core Profile - Basic Actions Non-happy flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 144, Page 127/176
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Table 144, Page 127/176
 
-Description         This scenario simulates a connector lock failure during a charging session start.
+Description         This scenario is used to report a connector lock failure.
 
-Purpose             To test if the Central System can handle when a Charge Point reports a
-                    ConnectorLockFailure after authorization.
+Purpose             To test if the Central System is able to handle a report of a connector lock failure.
 
 Prerequisite(s)     n/a
 
@@ -19,9 +18,10 @@ Before              Configuration State(s): n/a
                     Reusable State(s): Authorized
 
 Test Scenario
-    1. The Charge Point sends a StatusNotification.req (status=Preparing)
+    1. The Charge Point sends a StatusNotification.req
     2. The Central System responds with a StatusNotification.conf
-    3. The Charge Point sends a StatusNotification.req (status=Faulted, errorCode=ConnectorLockFailure)
+    [EV driver plugs in the cable.]
+    3. The Charge Point sends a StatusNotification.req
     4. The Central System responds with a StatusNotification.conf
 
 Tool Validations

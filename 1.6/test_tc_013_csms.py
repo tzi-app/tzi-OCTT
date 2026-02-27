@@ -22,6 +22,9 @@ Scenario Detail(s)
     [Send per connector and connectorId=0.]      6. CS responds with StatusNotification.conf
     5. CP sends a StatusNotification.req
 
+    Note: The number of connectors is not specified. Implementation assumes 1 connector
+    (connectorId=1) plus connectorId=0 for the charge point itself.
+
 Tool validation(s)
     Charge Point (Tool):
     - Step 2: (Message: Reset.conf) status is Accepted

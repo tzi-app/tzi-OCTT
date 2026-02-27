@@ -1,16 +1,17 @@
 """
-Test case name      Unlock Connector - Unlock Failure
+Test case name      Unlock Connector – Unlock Failure
 Test case Id        TC_030_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.10.1 - Core Profile - Unlock Connector Error Handling
+Section             3.10. Core Profile - Unlocking Non-happy flow
+                    3.10.1. Unlock Connector – Unlock Failure
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 149, Page 130/176
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3, Table 147, Page 129/176
 
-Description         This scenario simulates a connector unlock failure.
+Description         This scenario is used to report a connector lock failure.
 
-Purpose             To test if the Central System can handle when the Charge Point reports
-                    an UnlockFailed status.
+Purpose             To test if the Central System is able to handle a report of a connector
+                    lock failure.
 
 Prerequisite(s)     n/a
 

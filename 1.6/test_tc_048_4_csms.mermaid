@@ -4,14 +4,13 @@ sequenceDiagram
 
     Note over CP,CS: Test Case: TC_048_4_CSMS
     Note over CP,CS: Reservation of a Connector - Rejected
-    Note over CP,CS: Table 171, page 146 (CompliancyTestTool-TestCaseDocument)
+    Note over CP,CS: Table 171, page 146 (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
     Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
 
     CS->>CP: 1. ReserveNow.req
-    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: <future timestamp>
+    Note over CS: CS-side validation:<br/>connectorId = <Configured ConnectorId><br/>idTag = <Configured Valid IdTag>
 
-    CP-->>CS: 2. ReserveNow.conf (status: Rejected)
-    Note over CP: CP-side validation:<br/>status must be Rejected
-    Note over CS: CS-side validation:<br/>connectorId = Configured ConnectorId<br/>idTag = Configured Valid IdTag
+    CP-->>CS: 2. ReserveNow.conf
+    Note over CP: CP-side validation:<br/>status is Rejected
 
-    Note over CP,CS: Expected: Central System accepts the non-Accepted reservation status
+    Note over CP,CS: Expected (CS side): Accepts the Reservation message with the not Accepted status

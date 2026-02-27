@@ -3,7 +3,7 @@ Test case name      Reservation of a Connector - Transaction
 Test case Id        TC_046_CSMS
 OCPP Version        1.6J
 Section             3.17.1 - Reservation of a Connector
-Document ref        Table 166, Page 142/176 (CompliancyTestTool-TestCaseDocument 2025-11)
+Document ref        Table 166, Page 143/176 (CompliancyTestTool-TestCaseDocument-CSMS-Section3 2025-11)
 
 Description         A Connector is reserved and a charging transaction takes place.
 
@@ -18,16 +18,19 @@ Before:
 
 Test Scenario
 1. The Central System sends a ReserveNow.req to the Charge Point.
+   - connectorId is <Configured ConnectorId>
+   - idTag is <Configured Valid IdTag>
 2. The Charge Point responds with a ReserveNow.conf to the Central System.
 3. The Charge Point sends a StatusNotification.req to the Central System.
 4. The Central System responds with a StatusNotification.conf to the Charge Point.
 5. Execute Reusable State: Charging
-   (See Table 201 - Reusable State: Charging, which depends on Table 200 - Reusable State: Authorized.
+   (See Table 201 - Reusable State: Charging, Page 174/176,
+    which depends on Table 200 - Reusable State: Authorized, Page 174/176.
     Full sub-flow:
-      Authorized:
+      Authorized (Table 200):
         a. CP sends Authorize.req (idTag: <Configured Valid IdTag>)
         b. CS responds with Authorize.conf (idTagInfo.status should be Accepted)
-      Charging:
+      Charging (Table 201):
         c. CP sends StatusNotification.req (status: Preparing, connectorId: <Configured ConnectorId>)
         d. CS responds with StatusNotification.conf
         e. CP sends StartTransaction.req (idTag: <Configured Valid IdTag>,
@@ -39,19 +42,19 @@ Test Scenario
 Tool validations (Charge Point side):
 * Step 2:
     Message: ReserveNow.conf
-    - status is "Accepted"
+    - The status is Accepted
 * Step 3:
     Message: StatusNotification.req
-    - status is "Reserved"
+    - The status is Reserved
 * Step 5:
-    Reusable State: Charging
+    (Reusable State: Charging)
     - The reservationId is the reservationId from step 1
 
 Tool validations (Central System side - SUT):
 * Step 1:
     Message: ReserveNow.req
-    - connectorId should be <Configured ConnectorId>
-    - idTag should be <Configured Valid IdTag>
+    - The connectorId should be <Configured ConnectorId>
+    - The idTag should be <Configured Valid IdTag>
 
 Expected result(s):    n/a (both sides per document)
 
@@ -59,8 +62,9 @@ NOTE (to be fixed later):
     - The document does not explicitly validate reservationId or expiryDate in the ReserveNow.req
       CS-side validations, but these are required fields per OCPP 1.6 spec. Confirm whether the
       OCTT tool validates them implicitly or if additional handling is needed.
-    - Step 5 validation says "The reservationId is the reservationId from step 1" but it is unclear
-      which specific message field this refers to (likely StartTransaction.req.reservationId).
+    - Step 5 CP-side validation says "The reservationId is the reservationId from step 1" — this
+      refers to the StartTransaction.req.reservationId field matching the reservationId sent in
+      the ReserveNow.req at step 1.
 """
 
 import asyncio
@@ -92,6 +96,9 @@ async def test_tc_046(connection):
     # Step 1-2: Wait for CSMS to send ReserveNow.req → CP responds Accepted
     await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
     assert cp._reserve_now_data is not None
+    # CS-side validations: ReserveNow.req fields
+    assert cp._reserve_now_data['connector_id'] == CONNECTOR_ID
+    assert cp._reserve_now_data['id_tag'] == VALID_ID_TAG
 
     # Capture reservationId from step 1
     reservation_id = cp._reserve_now_data['reservation_id']

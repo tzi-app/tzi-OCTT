@@ -5,7 +5,7 @@ OCPP Version        1.6J
 Profile             Core
 Section             3.6.1 Core Profile - Unlocking Happy Flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 135, Page 126
+Document ref        CompliancyTestTool-TestCaseDocument, Table 135, Page 121
 
 Description         This scenario is used to unlock a connector of a Charge Point.
 

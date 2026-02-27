@@ -4,6 +4,7 @@ Test case Id        TC_040_2_CSMS
 OCPP version        1.6J
 Profile             Core
 Document ref        Section 3.13.2, Table 154, Page 134/176
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, PDF page 31)
 
 System under test   Central System
 
@@ -21,34 +22,24 @@ Before
     Reusable State(s):      n/a
 
 Test Scenario
-1. The Central System (SUT) sends a ChangeConfiguration.req to the Charge Point (OCTT).
-   - Message: ChangeConfiguration.req
-   - Note: The tool only validates that key = MeterValueSampleInterval.
-     The value to send is not specified by the test case document.
-     (TODO: confirm what invalid value to use - the CS variant TC_040_2_CS uses -1)
-2. The Charge Point (OCTT) responds with a ChangeConfiguration.conf.
-   - Message: ChangeConfiguration.conf
-   - Fields:
-       status (ConfigurationStatus) - Rejected
+1. The Central System (SUT) sends a ChangeConfiguration.req.
+2. The Charge Point (Tool) responds with a ChangeConfiguration.conf.
 
 Tool validations
 * Step 1:
   (Message: ChangeConfiguration.req)
-  The key MUST be MeterValueSampleInterval.
+  The key is MeterValueSampleInterval.
 * Step 2:
   (Message: ChangeConfiguration.conf)
-  The status MUST be Rejected.
+  The status is Rejected.
 
 Expected result(s) / behaviour
     Charge Point (Tool):    n/a
     Central System (SUT):   n/a
 
-OCPP 1.6 Reference
-    Section 5.3 - ChangeConfiguration
-    ConfigurationStatus enum values: Accepted, Rejected, RebootRequired, NotSupported
-    ChangeConfiguration.req is sent by the Central System to the Charge Point.
-    ChangeConfiguration.conf is the Charge Point's response.
-    MeterValueSampleInterval: interval (in seconds) between sampling of metering (or other) data.
+Note: The test case document does not specify which value to send in ChangeConfiguration.req.
+      The tool only validates that key = MeterValueSampleInterval and that the response
+      status = Rejected. The actual value sent is implementation-dependent (to be confirmed).
 """
 
 import asyncio

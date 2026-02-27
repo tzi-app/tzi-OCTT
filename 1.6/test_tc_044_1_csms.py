@@ -2,7 +2,7 @@
 Test case name      Firmware Update - Download and Install
 Test case Id        TC_044_1_CSMS
 Feature profile     FirmwareManagement
-Document ref        Section 3.15.1, Table 161, p. 138 (CompliancyTestTool-TestCaseDocument, 2025-11)
+Document ref        Section 3.15.1, Table 161, pp. 138-139 (CompliancyTestTool-TestCaseDocument-CSMS-Section3, 2025-11)
 
 Description         The firmware of a Charge Point is updated.
 Purpose             Check whether Central System can trigger an update of the firmware of a Charge Point.
@@ -62,14 +62,24 @@ Tool validations
     * Step 7 (Charge Point):
         (Message: StatusNotification.req)
         The status is Unavailable.
+        Note: Docstring says "reports the status of all connectors" but the mermaid
+        diagram shows only a single StatusNotification. Implementation sends for
+        connector 0 (CP-level) and each physical connector, which matches OCPP 1.6
+        convention for "all connectors".
 
     * Step 9 (Charge Point):
         (Message: FirmwareStatusNotification.req)
         The status is Installing.
 
+    * Step 11-12:
+        Note: Docstring does not specify the expected BootNotification.conf status.
+        Implementation asserts RegistrationStatus.accepted, which is the standard
+        expected response after a firmware update.
+
     * Step 13 (Charge Point):
         (Message: StatusNotification.req)
         The status is Available.
+        Note: Same "all connectors" ambiguity as step 7 (see note above).
 
     * Step 15 (Charge Point):
         (Message: FirmwareStatusNotification.req)

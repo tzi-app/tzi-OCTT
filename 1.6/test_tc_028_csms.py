@@ -1,16 +1,17 @@
 """
-Test case name      Remote Stop Transaction - Rejected
+Test case name      Remote Stop Transaction – Rejected
 Test case Id        TC_028_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.9.2 - Core Profile - Remote Actions Error Handling
+Section             3.9.2 - Core Profile - Remote Actions Non-Happy Flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 147, Page 129/176
+Document ref        CompliancyTestTool-TestCaseDocument, Table 146, Page 128/176
 
-Description         This scenario is used to reject a remote stop transaction request.
+Description         This scenario is used to reject a RemoteStopTransaction.req,
+                    when an unknown transactionId is given.
 
-Purpose             To test if the Central System can handle when the Charge Point rejects
-                    a RemoteStopTransaction request (e.g. unknown transactionId).
+Purpose             To test if the Central System can handle when a Charge Point rejects
+                    a RemoteStopTransaction.req, when an unknown transactionId is given.
 
 Prerequisite(s)     n/a
 
@@ -24,6 +25,13 @@ Test Scenario
 
 Tool Validations
     * Step 2 (RemoteStopTransaction.conf): status MUST be "Rejected"
+
+Note: The docstring and mermaid diagram state the CSMS should send an "unknown"
+      transactionId (i.e. one that doesn't match the active transaction). However,
+      the Tool Validations only require checking the response status, not the request
+      content. The test therefore does not assert that the received transactionId
+      differs from the actual one — this is a CSMS-side behavior that the spec
+      does not explicitly require the tool to validate.
 
 Expected Result     n/a
 """

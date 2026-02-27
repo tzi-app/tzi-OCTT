@@ -4,7 +4,10 @@ Test case Id        TC_040_1_CSMS
 OCPP version        1.6J
 Profile             Core
 
-Document Reference  OCTT CompliancyTestTool-TestCaseDocument, Section 3.13.1, Table 153, Page 134
+Document Reference  OCTT CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
+                    Section 3.13 - Core Profile - Configuration Keys Non-Happy Flow
+                    Section 3.13.1 - Configuration keys - NotSupported
+                    Table 153, Document Page 134, PDF Page 31
 
 System under test   Central System
 
@@ -23,9 +26,7 @@ Before
 Test Scenario
 1. The Central System (SUT) sends a ChangeConfiguration.req to the Charge Point (OCTT).
    - Message: ChangeConfiguration.req
-   - Fields: (not specified in test case document; per OCPP 1.6 spec Section 5.3:
-       key   (CiString50Type)  - to be determined
-       value (CiString500Type) - to be determined)
+   - Fields: not specified in test case document (SUT decides key and value)
 2. The Charge Point (OCTT) responds with a ChangeConfiguration.conf.
    - Message: ChangeConfiguration.conf
    - Fields:
@@ -42,12 +43,6 @@ Tool validations
 Expected result(s) / behaviour
     Charge Point (Tool):     n/a
     Central System (SUT):    n/a
-
-OCPP 1.6 Reference
-    Section 5.3 - ChangeConfiguration
-    ConfigurationStatus enum values: Accepted, Rejected, RebootRequired, NotSupported
-    ChangeConfiguration.req is sent by the Central System to the Charge Point.
-    ChangeConfiguration.conf is the Charge Point's response.
 
 Notes (to be fixed later)
     - The test case document does not specify which key/value the Central System (SUT) should send

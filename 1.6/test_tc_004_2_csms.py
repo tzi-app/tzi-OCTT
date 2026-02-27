@@ -2,7 +2,7 @@
 Test case name      Regular Charging Session – Identification First - ConnectionTimeOut
 Test case Id        TC_004_2_CSMS
 OCPP Version        1.6j
-Document Reference  Table 125, page 111/176 (CompliancyTestTool-TestCaseDocument, 2025-11)
+Document Reference  Table 125, pages 111-112/176 (CompliancyTestTool-TestCaseDocument, 2025-11)
 Chapter             3.2.3
 System under test   Central System
 

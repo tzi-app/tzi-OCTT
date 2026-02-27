@@ -51,11 +51,10 @@ Tool validations (Central System side):
     - reservationId matches the reservationId from step 1
 
 Expected result(s):
-    The Charge Point handles the reservation correctly, cancelling only the
-    reservation with the right reservationId. After cancellation the connector
-    transitions back to Available status.
-    The Central System processes the response from the Charge Point to the
-    cancel reservation message.
+    CP: The Charge Point handles the reservation correctly, cancelling only the
+        reservation with the right reservationId.
+    CS: The Central System processes the response from the Charge Point to the
+        cancel reservation message.
 """
 
 import asyncio

@@ -3,7 +3,8 @@ Test case name      Reservation of a Charge Point - Transaction
 Test case Id        TC_049_CSMS
 OCPP Version        1.6J
 Section             3.17.2 - Reservation of a Charge Point
-Document Reference  Table 172, page 146 (CompliancyTestTool-TestCaseDocument)
+Document Reference  Table 172, Section 3.17.2, document pages 146-147 / PDF pages 43-44
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
 
 Description         A Charge Point / unspecified Connector is reserved and a charging
                     transaction takes place.
@@ -52,12 +53,20 @@ Expected result(s) / behaviour:
         reservationId.
 
 Notes (to be verified/fixed later):
-    - The doc's Purpose text appears to have a grammar issue ("trigger" instead
-      of "triggers" or "can trigger") -- kept as-is from the document.
+    - The doc's Purpose text has a grammar issue ("trigger" instead of
+      "triggers" or "can trigger") -- kept as-is from the document.
     - ReserveNow.req requires an expiryDate field per the OCPP 1.6 spec, but
       the document's scenario step 1 only explicitly mentions reservationId,
       connectorId, and idTag. The expiryDate should still be set to a future
       timestamp in the implementation.
+    - The title says "Transaction" and the description says "a charging
+      transaction takes place", but the scenario only has 4 steps with NO
+      transaction flow (no Authorize, StartTransaction, Charging
+      StatusNotification, etc.). Compare with TC_046 (Reservation of a
+      Connector - Transaction) which explicitly includes a Reusable State:
+      Charging step with the full transaction sub-flow. This appears to be an
+      omission in the OCTT document for TC_049 — verify whether the OCTT tool
+      actually expects a transaction after the reservation.
 """
 
 import asyncio

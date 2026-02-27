@@ -1,16 +1,18 @@
 sequenceDiagram
-    participant CP as Charge Point (OCTT)
+    participant CP as Charge Point (Tool)
     participant CS as Central System (SUT)
 
     Note over CP,CS: Reusable State: InstalledCertificatesReceived
+    Note over CP,CS: Section 3.22, Table 202, Pages 174-175
     Note over CP,CS: OCPP 1.6J (Security Extension)
 
     Note over CP: Manual Action: Request installed root certificates
 
-    CS->>CP: GetInstalledCertificateIds.req
-    Note over CS: Validation: certificateType should be<br/><Expected certificateType>
+    CS->>CP: 1. GetInstalledCertificateIds.req
 
-    CP-->>CS: GetInstalledCertificateIds.conf
+    CP-->>CS: 2. GetInstalledCertificateIds.conf
     Note right of CP: certificateHashData = <Calculated hash data>
+
+    Note over CP: Validation (Step 1):<br/>certificateType should be <Expected certificateType>
 
     Note over CP,CS: State is InstalledCertificatesReceived

@@ -1,5 +1,5 @@
 """
-Test case name      Change/Set Configuration
+Test case name      Change/set Configuration
 Test case Id        TC_021_CSMS
 OCPP Version        1.6J
 Profile             Core
@@ -7,9 +7,10 @@ Section             3.7.3 - Core Profile - Configuration Happy Flow
 System under test   Central System (CSMS)
 Document ref        CompliancyTestTool-TestCaseDocument, Table 140, Page 125/176
 
-Description         The Central System is able to change configuration.
+Description         This scenario is used to set the value of a configuration key.
 
-Purpose             To test if the Central System is able to change a configuration key.
+Purpose             To test if the Central System can handle when a Charge Point
+                    sets the configuration key value, specified by the Central System.
 
 Prerequisite(s)     n/a
 
@@ -18,15 +19,15 @@ Before              Configuration State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
-    1. The Central System sends a ChangeConfiguration.req to the Charge Point
-       with key = "MeterValueSampleInterval" and value = "60".
-    2. The Charge Point responds with a ChangeConfiguration.conf with status = "Accepted".
+    1. The Central System sends a ChangeConfiguration.req to the Charge Point.
+    2. The Charge Point responds with a ChangeConfiguration.conf.
 
 Tool Validations
     * Step 1 (ChangeConfiguration.req):
-      - key is "MeterValueSampleInterval"
+      - key is MeterValueSampleInterval
+      - value is 60
     * Step 2 (ChangeConfiguration.conf):
-      - status MUST be "Accepted"
+      - status is Accepted
 
 Expected Result     n/a
 """

@@ -32,6 +32,8 @@ Tool Validations
     * Step 1:
         (Message: GetLog.req)
         The log.remoteLocation is <Configured log location>
+            NOTE: The exact remoteLocation value depends on CSMS configuration;
+            we only validate that it is present and non-empty.
         The logType is SecurityLog
 
     * Step 2:
@@ -76,6 +78,8 @@ async def test_tc_079(connection):
     await asyncio.wait_for(cp._received_get_log.wait(), timeout=ACTION_TIMEOUT)
     assert cp._get_log_data is not None
     assert cp._get_log_data['log_type'] == 'SecurityLog'
+    log = cp._get_log_data['log']
+    assert log.get('remote_location'), "GetLog.req must include a non-empty remoteLocation"
     request_id = cp._get_log_data['request_id']
 
     # Step 3-4: CP sends LogStatusNotification (Uploading)

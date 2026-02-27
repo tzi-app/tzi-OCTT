@@ -2,12 +2,11 @@ sequenceDiagram
     participant CP as Charge Point (OCTT)
     participant CS as Central System (SUT)
 
-    Note over CP,CS: TC_032_1_CSMS: Power failure boot - configured to stop transaction(s)
-    Note over CP,CS: Precondition: An ongoing charging transaction exists on a connector
+    Note over CP,CS: TC_032_1_CSMS: Power failure boot charging point-configured to stop transaction(s)
+    Note over CP,CS: Section 3.11.1, Table 149, Page 130/176
+    Note over CP,CS: Reusable State: Charging
 
-    Note over CP: Power failure occurs
-    CP-xCS: [Connection lost - power disconnected]
-    Note over CP: Power restored - Charge Point reboots
+    Note over CP,CS: [Disconnect and reconnect the power of the Charge Point.]
 
     CP->>CS: 1. BootNotification.req
     CS-->>CP: 2. BootNotification.conf (status = Accepted)

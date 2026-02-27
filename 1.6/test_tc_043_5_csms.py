@@ -35,9 +35,16 @@ Tool validations
     * Step 3: (Message: SendLocalList.req)
         - updateType should be Differential.
         - localAuthorizationList contains <Only the specified idToken, including an idTagInfo.>
+          NOTE: "Only the specified idToken" suggests exactly 1 entry. The test validates at least 1
+          entry with idTagInfo but does not enforce exactly 1, since the CSMS may batch entries.
         - versionNumber should be <Greater than the initial listVersion.>
     * Step 4: (Message: SendLocalList.conf)
         - status is Accepted.
+
+Implementation notes
+    - Steps 1-2 (GetLocalListVersion) are marked optional in the spec but this test requires them.
+      If the CSMS skips GetLocalListVersion, the test will timeout. This is acceptable as long as
+      the CSMS always sends GetLocalListVersion before a Differential update.
 
 Expected result(s) / behaviour
     Charge Point (Tool): n/a

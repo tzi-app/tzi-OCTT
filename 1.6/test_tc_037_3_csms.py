@@ -4,7 +4,7 @@ Test case Id        TC_037_3_CSMS
 OCPP version        1.6J
 Profile             Core
 Section             3.12.2
-Reference           CompliancyTestTool-TestCaseDocument, Page 131, Table 151
+Reference           CompliancyTestTool-TestCaseDocument, Pages 131-132, Table 151
 
 Description         This scenario is used to start a transaction, while being offline.
 
@@ -18,6 +18,9 @@ Prerequisite(s)     n/a
 
 Configuration State(s):
     n/a
+    NOTE: The test title implies the CP has StopTransactionOnInvalidId = true,
+    which causes it to stop the transaction after receiving Invalid from the CSMS.
+    This is a CP-side configuration, not a CSMS configuration.
 
 Memory State(s):
     n/a
@@ -107,7 +110,6 @@ async def test_tc_037_3(connection):
     stop_response = await cp.send_stop_transaction(
         transaction_id=transaction_id,
         reason=Reason.de_authorized,
-        id_tag=INVALID_ID_TAG,
     )
     assert stop_response is not None
 

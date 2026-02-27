@@ -1,31 +1,33 @@
 """
-Test case name      Start Charging Session - Authorize Blocked
+Test case name      Start Charging Session – Authorize blocked
 Test case Id        TC_023_3_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.8.3 - Core Profile - Authorization Error Handling
+Section             3.8.3 - Core Profile - Basic Actions Non-happy flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 143, Page 127/176
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3, Table 143, Page 127/176
 
-Description         This scenario is used to check when the Charge Point sends an Authorize
-                    request with a blocked idTag.
+Description         This scenario is used to inform the Charge Point that the EV Driver is
+                    not Authorized to start a transaction.
 
-Purpose             To test if the Central System responds with the status Blocked when a
-                    blocked idTag is used for authorization.
+Purpose             To test if the Central System is able to provide a blocked response on
+                    an Authorize.req.
 
-Prerequisite(s)     The CSMS has an idTag configured with status = Blocked.
+Prerequisite(s)     The Central System has an idTag in memory with status 'Blocked'.
 
 Before              Configuration State(s): n/a
                     Memory State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
-    1. The Charge Point sends an Authorize.req with a blocked idTag.
+    [EV driver presents blocked identification.]
+    1. The Charge Point sends an Authorize.req.
     2. The Central System responds with an Authorize.conf.
 
 Tool Validations
-    * Step 2 (Authorize.conf):
-      - idTagInfo.status MUST be "Blocked"
+    * Step 1 (Authorize.conf):
+      - idTagInfo.status is Blocked
+      NOTE: Doc says "Step 1" but Authorize.conf is Step 2. Likely a typo in the original OCTT doc.
 
 Expected Result     n/a
 """

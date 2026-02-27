@@ -3,7 +3,7 @@ Test case name      TLS - Client-side certificate - valid certificate
 Test case Id        TC_087_CSMS
 Section             3.21 Security
 System under test   Central System
-Document ref        CompliancyTestTool-TestCaseDocument, Table 197, pages 171-172
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Table 197, pages 171-172
 
 Description         The Charge Point uses a client-side certificate to identify itself to the Central System, when using security
                     profile 3.
@@ -16,7 +16,7 @@ Prerequisite(s)     The Central System supports security profile 3.
 Before (Preparations)
     Configuration State: N/a
     Memory State: N/a
-    Reusable State(s): The OCTT closes the connection.
+    Reusable State(s): N/a
 
 Test Scenario
     1. The Charge Point initiates a TLS handshake and sends a Client Hello to the Central System.
@@ -53,9 +53,20 @@ Tool Validations
             AND TLS_RSA_WITH_AES_128_GCM_SHA256
             AND TLS_RSA_WITH_AES_256_GCM_SHA384
 
+        NOTE: The cipher suite validation is an OCTT-internal check during TLS negotiation.
+        The test verifies TLS version but does not explicitly assert negotiated cipher suites,
+        since the OS/OpenSSL TLS stack handles cipher negotiation and the test cannot enumerate
+        all ciphers the server *supports* — only the one actually negotiated.
+
     Post scenario validations: N/a
 
-Expected result(s) / behaviour: n/a
+Expected result(s) / behaviour: N/a
+
+Implementation notes:
+    - Step 9 "[Send per connector and connectorId=0]": Ambiguous on how many connectors.
+      Implemented as connectorId=0 (CP itself) + connectorId=1 (assumes 1 physical connector).
+    - The docstring does not specify the expected BootNotification.conf status; test asserts 'Accepted'
+      which is consistent with a successful connection scenario.
 """
 
 import asyncio

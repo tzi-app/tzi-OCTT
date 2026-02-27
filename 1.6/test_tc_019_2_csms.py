@@ -5,12 +5,13 @@ OCPP Version        1.6J
 Profile             Core
 Section             3.7.2 - Core Profile - Configuration Happy Flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 139, Page 125/176
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf,
+                    Table 139, Pages 124-125/176
 
 Description         The Central System is able to retrieve a specific configuration key.
 
-Purpose             To check whether the Central System is able to retrieve one specific
-                    configuration key.
+Purpose             To check whether the Central System is able to retrieve a specific
+                    Configuration key.
 
 Prerequisite(s)     n/a
 
@@ -19,19 +20,19 @@ Before              Configuration State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
-    1. The Central System sends a GetConfiguration.req to the Charge Point
-       with key = ["SupportedFeatureProfiles"].
+    1. The Central System sends a GetConfiguration.req message to the Charge Point.
     2. The Charge Point responds with a GetConfiguration.conf.
 
 Tool Validations
     * Step 1 (GetConfiguration.req):
-      - key list contains "SupportedFeatureProfiles"
+      - key is "SupportedFeatureProfiles"
     * Step 2 (GetConfiguration.conf):
-      - unknownKey list is empty
-      - configurationKey contains key = "SupportedFeatureProfiles"
+      - unknownKey list is <Empty>
+      - configurationKey.key should be "SupportedFeatureProfiles"
 
 Expected Result
-    The Central System receives the value of the requested configuration key.
+    The Central System is able to retrieve the value of the requested
+    configuration key.
 """
 
 import asyncio

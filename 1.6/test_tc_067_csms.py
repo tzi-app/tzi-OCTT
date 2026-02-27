@@ -2,7 +2,8 @@
 Test case name      Clear Charging Profile
 Test case Id        TC_067_CSMS
 Feature profile     SmartCharging (Section 3.19)
-Document reference  Table 181, Section 3.19.3, Pages 154-155/176
+Document reference  CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
+                    Table 181, Section 3.19.3, Pages 154-155/176
 
 Description         The Central System sets a Charging Profile and clears it.
 Purpose             To check whether the Central System can clear a charging profile.
@@ -57,6 +58,11 @@ Tool validations
             - stackLevel should be <Configured Stack Level>
             - transactionId should be <Generated transactionId by Central System>
             - chargingProfileId should be <Different than the chargingProfileId from profile 1 and 2>
+
+        NOTE: The OCTT document specifies <Configured Stack Level> for all three profiles,
+        implying the same stack level value is used across all profiles. No specific value
+        is prescribed; the test validates that stackLevel is present and identical across
+        all three profiles.
 
     * Step 2 (SetChargingProfile.conf) - for each of the 3 profiles:
         - status should be Accepted
@@ -126,21 +132,28 @@ async def test_tc_067(connection):
     # Validate profile 1: ChargePointMaxProfile on connector 0
     assert profiles[0]['connector_id'] == 0
     assert profiles[0]['cs_charging_profiles']['charging_profile_purpose'] == 'ChargePointMaxProfile'
+    assert profiles[0]['cs_charging_profiles'].get('stack_level') is not None
     assert profiles[0]['cs_charging_profiles'].get('transaction_id') is None
 
     # Validate profile 2: TxDefaultProfile on configured connector
     assert profiles[1]['connector_id'] == CONNECTOR_ID
     assert profiles[1]['cs_charging_profiles']['charging_profile_purpose'] == 'TxDefaultProfile'
+    assert profiles[1]['cs_charging_profiles'].get('stack_level') is not None
     assert profiles[1]['cs_charging_profiles'].get('transaction_id') is None
 
     # Validate profile 3: TxProfile on configured connector with transactionId
     assert profiles[2]['connector_id'] == CONNECTOR_ID
     assert profiles[2]['cs_charging_profiles']['charging_profile_purpose'] == 'TxProfile'
+    assert profiles[2]['cs_charging_profiles'].get('stack_level') is not None
     assert profiles[2]['cs_charging_profiles'].get('transaction_id') == transaction_id
 
     # All charging profile IDs must be different
     profile_ids = [p['cs_charging_profiles']['charging_profile_id'] for p in profiles]
     assert len(set(profile_ids)) == 3
+
+    # All stack levels should be the same (<Configured Stack Level>)
+    stack_levels = [p['cs_charging_profiles']['stack_level'] for p in profiles]
+    assert len(set(stack_levels)) == 1
 
     # Steps 3-8: Wait for 3 ClearChargingProfile.req messages and validate each
     clears = []

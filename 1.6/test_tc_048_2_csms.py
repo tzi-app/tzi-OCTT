@@ -3,8 +3,7 @@ Test case name      Reservation of a Connector - Occupied
 Test case Id        TC_048_2_CSMS
 OCPP Version        1.6J
 Section             3.17.1 - Reservation of a Connector
-                    NOTE: OCTT document uses section 2.21.1 (to be verified)
-Document Reference  Table 169, pages 144-145 of CompliancyTestTool-TestCaseDocument (2025-11)
+Document Reference  Table 169, pages 144-145 of CompliancyTestTool-TestCaseDocument-CSMS-Section3 (2025-11)
 
 Description         The Central System attempts to reserve a Connector, but the reservation
                     is not made, instead the status Occupied is returned by the Charge Point.
@@ -29,9 +28,9 @@ Test Scenario
    - connectorId: same connectorId as in step 1
    - idTag: <Configured Valid IdTag>
    - reservationId: a unique reservation identifier chosen by the Central System
-     NOTE: not explicitly listed in OCTT tool validations, inferred from OCPP spec (to be verified)
+     NOTE: not explicitly listed in OCTT tool validations, inferred from OCPP spec
    - expiryDate: a future timestamp
-     NOTE: not explicitly listed in OCTT tool validations, inferred from OCPP spec (to be verified)
+     NOTE: not explicitly listed in OCTT tool validations, inferred from OCPP spec
 4. The Charge Point responds with a ReserveNow.conf to the Central System.
 
 Tool validations (Charge Point side):

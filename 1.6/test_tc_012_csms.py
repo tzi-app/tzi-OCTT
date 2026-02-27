@@ -1,10 +1,10 @@
 """
 Test case name      Remote Stop Charging Session
 Test case Id        TC_012_CSMS
-Chapter             3.4.4 Core Profile - Remote actions Happy flow
-Table               Table 132
-Page                117-118/176
+Chapter             3.4.4 (under 3.4. Core Profile - Remote actions Happy flow)
 Protocol            OCPP 1.6J
+Document ref        Page 117-118, Table 132
+                    (OCPP Compliancy Testing Tool - TestCaseDocument - CSMS - Section 3, 2025-11)
 
 System under test   Central System
 

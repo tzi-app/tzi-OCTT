@@ -3,7 +3,7 @@ Test case name      Secure Firmware Update
 Test case Id        TC_080_CSMS
 Section             3.21.3 Secure firmware update
 System under test   Central System
-Document reference  Table 192, pages 164-166 (CompliancyTestTool-TestCaseDocument, 2025-11)
+Document reference  Table 192, pages 164-166 (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, 2025-11)
 
 Description         The firmware of a Charge Point is updated in a secure way.
 

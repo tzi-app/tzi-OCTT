@@ -2,7 +2,7 @@
 Test case name      Send Local Authorization List - Failed
 Test case Id        TC_043_3_CSMS
 System under test   Central System (SUT)
-Reference           CompliancyTestTool-TestCaseDocument, Table 158, Page 136
+Reference           CompliancyTestTool-TestCaseDocument, Section 3.14.2, Table 158, Page 136
 
 Description         The Charge Point can authorize an EV driver based on a local list that is set by
                     the Central System.

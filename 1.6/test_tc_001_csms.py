@@ -5,7 +5,7 @@ OCPP Version        1.6
 Chapter             3.1 - Cold Boot Charge Point
 Section             3.1.1
 System under test   Central System
-PDF Reference       CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Page 110, Table 122
+PDF Reference       CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Page 2 (of 73), Table 122
 Doc Reference       CompliancyTestTool-TestCaseDocument.html, Page 110/176, Table 122
 
 Description         This scenario is used to startup the Charge Point and let it register itself
@@ -42,9 +42,15 @@ Tool Validations
         * Step 3:
           (Message: StatusNotification.req)
           - status is Available
+          NOTE: The doc says "per connector and connectorId=0" but does not specify
+          the total number of connectors. Test assumes a single-connector CP
+          (connectorId=0 for the main controller + connectorId=1).
         * Step 5:
           (Message: Heartbeat.req)
           Send a Heartbeat.req every x seconds. x equals interval from step 2.
+          NOTE: The test sends a single heartbeat immediately (without waiting
+          interval seconds) since we are validating the CSMS response, not the
+          CP's heartbeat scheduling.
 
     Central System (SUT):
         * Step 2:

@@ -2,7 +2,8 @@
 Test case name      Get Local List Version (not supported)
 Test case Id        TC_042_1_CSMS
 System under test   Central System
-Reference           Section 3.14.1, Table 155, Page 135 (CompliancyTestTool-TestCaseDocument)
+Reference           Section 3.14.1, Table 155, Document Page 135 (PDF Page 32)
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
 
 Description         The Central System can request a Charge Point for the version number of the Local
                     Authorization List.
@@ -18,7 +19,7 @@ Before
     Reusable State(s): n/a
 
 Test Scenario
-1. The Central System sends a GetLocalListVersion.req to the Charge Point.
+1. The Central System sends a GetLocalListVersion.req.
 2. The Charge Point responds with a GetLocalListVersion.conf.
 
 Tool validations

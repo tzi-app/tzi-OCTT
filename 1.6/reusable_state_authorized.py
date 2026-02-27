@@ -1,9 +1,9 @@
 """
 Reusable State      Authorized
-State Id            RS_AUTHORIZED
 OCPP version        1.6J
 System under test   Central System (CS)
-Document reference  Table 200 (pages 173-174/176) in CompliancyTestTool-TestCaseDocument
+Document reference  Section 3.22, Table 200 (pages 173-174/176) in
+                    CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
 
 Description         This state will simulate that the EV Driver is locally authorizing to start
                     a transaction on the simulated Charge Point.
@@ -25,8 +25,4 @@ Tool validation(s):
 
 Expected result(s) / behaviour:
     State is Authorized.
-
-Notes (to be fixed later):
-    - "State Id: RS_AUTHORIZED" is not referenced in the official document.
-    - The document uses "should be" for idTagInfo.status validation, not "MUST be".
 """

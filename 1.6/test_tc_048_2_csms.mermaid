@@ -4,7 +4,7 @@ sequenceDiagram
 
     Note over CP,CS: Test Case: TC_048_2_CSMS
     Note over CP,CS: Reservation of a Connector - Occupied
-    Note over CP,CS: Table 169, pages 144-145 (CompliancyTestTool-TestCaseDocument 2025-11)
+    Note over CP,CS: Table 169, pages 144-145 (CompliancyTestTool-TestCaseDocument-CSMS-Section3 2025-11)
     Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
 
     Note over CP: [EV driver plugs in cable]
@@ -14,7 +14,7 @@ sequenceDiagram
     CS-->>CP: 2. StatusNotification.conf
 
     CS->>CP: 3. ReserveNow.req
-    Note left of CS: connectorId: connectorId from step 1<br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id> (inferred from OCPP spec)<br/>expiryDate: <future timestamp> (inferred from OCPP spec)
+    Note left of CS: connectorId: connectorId from step 1<br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id> (not in tool validations, required by OCPP spec)<br/>expiryDate: <future timestamp> (not in tool validations, required by OCPP spec)
     Note left of CS: Validation: connectorId from step 1, idTag is <Configured Valid IdTag>
 
     CP-->>CS: 4. ReserveNow.conf (status: Occupied)

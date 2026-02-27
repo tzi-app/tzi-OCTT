@@ -47,6 +47,14 @@ Tool Validations
     Note: This test case must be executed with a Root CA certificate in order to get the correct response
     message from the OCTT.
 
+    Note: "CentralSystemRootCertificate 2" in the scenario description likely refers to this being
+    the second variant in the TC_075 series (the certificate type for this variant), not a certificate
+    with index/number 2.
+
+    Note: Step 4 says certificateHashData should include "the certificate information of the installed
+    certificate from step 1". In practice the OCTT validates presence and format of the hash data, not
+    cryptographic correctness against the actual certificate from step 1.
+
 Expected result(s) / behaviour: n/a
 """
 

@@ -1,7 +1,8 @@
 """
 Test case name      Unlock connector - no charging session running (Fixed cable)
 Test case Id        TC_017_2_CSMS
-Test document       CompliancyTestTool-TestCaseDocument, Table 136, page 121/176
+Test document       CompliancyTestTool-TestCaseDocument-CSMS-Section3 (2025-11),
+                    Table 136, Section 3.6.2, page 121/176 (PDF page 18/73)
 OCPP Version        1.6J
 Profile             Core
 Section             3.6.2 Unlock connector - no charging session running (Fixed cable)

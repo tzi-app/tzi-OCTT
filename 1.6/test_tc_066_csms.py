@@ -25,10 +25,15 @@ Tool validations
         - connectorId should be <Configured ConnectorId>
         - duration should be <Configured Charging Schedule Duration>
         - chargingRateUnit should be <Configured Charging Rate Unit>
+        NOTE: The OCTT doc says "Configured Charging Schedule Duration" and "Configured Charging Rate Unit"
+              but does not specify exact values. The test asserts these fields are present (not None)
+              and validates connectorId matches the configured connector.
 
     * Step 2:
         (Message: GetCompositeSchedule.conf)
         - chargingSchedule contains a hard-coded composite schedule
+        NOTE: The conf includes status=Accepted, connector_id, schedule_start (current time),
+              and a charging_schedule with one period (start_period=0, limit=16.0A).
 
 Expected result(s):
     The Central System has retrieved the composite ChargingProfile.

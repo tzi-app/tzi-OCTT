@@ -10,32 +10,30 @@ sequenceDiagram
     Note right of CS: firmware.location: <Firmware Download URL from test data>
     CP-->>CS: 2. UpdateFirmware.conf
 
-    Note over CP: Charge Point starts downloading firmware
+    Note over CP: The Charge Point starts downloading the firmware
 
     CP->>CS: 3. FirmwareStatusNotification.req (status: Downloading)
     CS-->>CP: 4. FirmwareStatusNotification.conf
 
-    Note over CP: Charge Point finishes downloading firmware
+    Note over CP: The Charge Point has finished downloading the firmware
 
     CP->>CS: 5. FirmwareStatusNotification.req (status: Downloaded)
     CS-->>CP: 6. FirmwareStatusNotification.conf
 
-    Note over CP: Charge Point reports connector status
+    Note over CP: The Charge Point reports the status of all connectors
 
     CP->>CS: 7. StatusNotification.req (status: Unavailable)
     CS-->>CP: 8. StatusNotification.conf
 
-    Note over CP: Charge Point starts installing firmware
+    Note over CP: The Charge Point starts installing the firmware
 
     CP->>CS: 9. FirmwareStatusNotification.req (status: Installing)
     CS-->>CP: 10. FirmwareStatusNotification.conf
 
-    Note over CP: Charge Point reboots
-
     CP->>CS: 11. BootNotification.req
     CS-->>CP: 12. BootNotification.conf
 
-    Note over CP: Charge Point reports connector status
+    Note over CP: The Charge Point reports the status of all connectors
 
     CP->>CS: 13. StatusNotification.req (status: Available)
     CS-->>CP: 14. StatusNotification.conf

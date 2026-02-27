@@ -4,7 +4,8 @@ Test case Id        TC_014_CSMS
 Profile             Core
 Section             3.5. Core Profile - Resetting Happy Flow / 3.5.2. Soft Reset
 Protocol            OCPP 1.6J
-Document reference  Table 134, Page 119/176
+Document reference  CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
+                    Table 134, Pages 119-120/176
 
 System under test   Central System (CSMS)
 
@@ -13,20 +14,30 @@ Purpose             To test if the Central System is able to trigger a soft rese
 
 Prerequisite(s)     n/a
 
-Test Scenario
-1. The Central System sends a Reset.req to the Charge Point with type = "Soft".
-2. The Charge Point responds with a Reset.conf with status = "Accepted".
-3. The Charge Point sends a BootNotification.req (simulating reboot after soft reset).
-4. The Central System responds with a BootNotification.conf with status = "Accepted".
-5. The Charge Point sends a StatusNotification.req for each connector (including connectorId=0)
-   with status = "Available".
-6. The Central System responds with a StatusNotification.conf for each StatusNotification.req.
+Before
+  Configuration State(s): n/a
+  Memory State(s):        n/a
+  Reusable State(s):      n/a
 
-Validations
-- Step 1: Reset.req field "type" must be "Soft".
-- Step 2: Reset.conf field "status" must be "Accepted".
-- Step 4: BootNotification.conf field "status" must be "Accepted".
-- Step 5: StatusNotification.req field "status" must be "Available".
+Test Scenario
+  Charge Point (Tool)                              Central System (SUT)
+  ─────────────────────────────────────────────────────────────────────────
+                                                   1. CS sends a Reset.req
+  2. CP responds with a Reset.conf
+  3. CP sends a BootNotification.req               4. CS responds with a BootNotification.conf
+  [Send per connector and connectorId=0.]
+  [Note: Number of connectors not specified. Test assumes 1 connector (connectorId=1) plus connectorId=0.]
+  5. CP sends a StatusNotification.req             6. CS responds with a StatusNotification.conf
+
+Tool Validations
+  Charge Point (Tool):
+  - Step 2: (Message: Reset.conf) status is Accepted
+  - Step 5: (Message: StatusNotification.req) status is Available
+  Central System (SUT):
+  - Step 1: (Message: Reset.req) type is Soft
+  - Step 4: (Message: BootNotification.conf) status is Accepted
+
+Expected result(s) / behaviour: n/a
 """
 
 import asyncio

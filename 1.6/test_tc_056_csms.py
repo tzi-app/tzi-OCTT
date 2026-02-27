@@ -3,7 +3,7 @@ Test case name      Central Smart Charging - TxDefaultProfile
 Test case Id        TC_056_CSMS
 Feature profile     SmartCharging
 
-Reference           CompliancyTestTool-TestCaseDocument, Table 178, page 151,
+Reference           CompliancyTestTool-TestCaseDocument, Table 178, pages 151-152,
                     section 3.19.1 Central Smart Charging
 
 Description         The Central System sets a default schedule for new transactions.

@@ -27,7 +27,13 @@ sequenceDiagram
     Note left of CP: status = SignatureVerified
     CS-->>CP: 8. SignedFirmwareStatusNotification.conf
 
-    Note over CP: Charge Point MAY set connectors to Unavailable<br/>Charge Point starts installing firmware
+    Note over CP: Before installing: Charge Point MAY set all connectors to Unavailable
+
+    CP->>CS: StatusNotification.req (after step 2, before step 9)
+    Note left of CP: status = Unavailable
+    CS-->>CP: StatusNotification.conf
+
+    Note over CP: Charge Point starts installing firmware
 
     CP->>CS: 9. SignedFirmwareStatusNotification.req
     Note left of CP: status = Installing

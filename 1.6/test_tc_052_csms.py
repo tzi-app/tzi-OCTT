@@ -26,8 +26,8 @@ Test Scenario
    - idTag: <Configured Valid IdTag>
    - reservationId: a unique reservation identifier chosen by the Central System
    - expiryDate: a future timestamp
-   NOTE: Parameters above are not explicitly listed in the CSMS test case document;
-   they are standard OCPP 1.6 ReserveNow.req fields (to be verified later).
+   NOTE: ReserveNow.req parameters are not explicitly listed in TC_052 but are
+   listed in TC_051 (Cancel Reservation - Accepted, Table 173, page 147/176).
 2. The Charge Point responds with a ReserveNow.conf to the Central System.
 3. The Charge Point sends a StatusNotification.req to the Central System.
 4. The Central System responds with a StatusNotification.conf to the Charge Point.
@@ -38,6 +38,8 @@ Test Scenario
 
 5. The Central System sends a CancelReservation.req to the Charge Point.
    - reservationId: a reservation identifier (which no longer exists on the Charge Point)
+   NOTE: CancelReservation.req parameters are not explicitly listed in TC_052
+   but TC_051 lists reservationId.
 6. The Charge Point responds with a CancelReservation.conf to the Central System.
 
 Tool validations (Charge Point side):

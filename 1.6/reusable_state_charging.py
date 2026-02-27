@@ -1,23 +1,19 @@
 """
 Reusable State      Charging
-State Id            RS_CHARGING
+State Id            RS_CHARGING (editorial - not in official doc)
 OCPP version        1.6J
 System under test   Central System (CS)
-Reference           Table 201, page 174/176 (CompliancyTestTool-TestCaseDocument)
+Reference           Section 3.22, Table 201, document page 174/176
+                    CompliancyTestTool-TestCaseDocument (PDF page 179)
+                    CompliancyTestTool-TestCaseDocument-CSMS-Section3 (PDF pages 72-73)
 
-Description         This reusable state simulates that the Charge Point starts a transaction. It
-                    transitions the connector through Preparing status, starts a transaction with
-                    StartTransaction.req, and then transitions to Charging status. This state
-                    depends on the Authorized reusable state being completed first.
-
-Purpose             To bring the Charge Point into a known "Charging" state where an active transaction
-                    is in progress on the configured connector.
+Description         This state will simulate that the Charge Point starts a transaction.
 
 Before (Preparations):
     Configuration State(s): N/a
     Memory State(s): N/a
     Reusable State(s):
-        - Authorized (RS_AUTHORIZED must be executed first)
+        - Authorized
 
 Scenario
 1. The Charge Point sends a StatusNotification.req with:
@@ -36,10 +32,8 @@ Scenario
 Tool validations:
     * Step 4:
         (Message: StartTransaction.conf)
-        - idTagInfo.status MUST be Accepted
+        - idTagInfo.status should be Accepted
 
 Expected result(s) / behaviour:
     State is Charging.
-    An active transaction is in progress on the configured connector. The connector
-    status is Charging. The transaction was started with the previously authorized idTag.
 """

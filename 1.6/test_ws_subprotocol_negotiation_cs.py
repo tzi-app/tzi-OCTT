@@ -3,7 +3,7 @@ Test case name      WebSocket Subprotocol negotiation
 Test case Id        TC_088_CSMS
 OCPP version        1.6J
 System under test   Central System (SUT)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 198, p.172-173
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3 (2025-11), Table 198, p.172-173
 
 Description         OCPP-J imposes extra constraints on the WebSocket subprotocol
 
@@ -41,6 +41,12 @@ Post scenario validations:
 
 NOTE: The official doc only validates Step 4. Step 2 rejection of unsupported-only subprotocol
       is implied by the scenario but has no explicit tool validation entry in the document.
+
+NOTE: The official doc says "The authorization header of the HTTP upgrade response must contain
+      the header Sec-Websocket-Protocol" — this is misleading. Sec-WebSocket-Protocol is NOT the
+      Authorization header; it is a separate WebSocket negotiation header in the HTTP upgrade response.
+
+NOTE: This test is a duplicate of test_tc_088_csms.py (same TC_088_CSMS scenario).
 """
 
 import asyncio

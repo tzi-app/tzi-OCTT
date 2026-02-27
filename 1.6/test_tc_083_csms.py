@@ -2,7 +2,8 @@
 Test case name      Upgrade Charge Point Security Profile - Accepted
 Test case Id        TC_083_CSMS
 Section             3.21 Security / 3.21.1 Secure connection setup
-Document ref        Table 194, pages 167-169 (CompliancyTestTool-TestCaseDocument 2025-11)
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, Table 194,
+                    document pages 167-169 (2025-11)
 System under test   Central System
 
 Description         The Central System can upgrade the connection using a higher Security Profile, the Central System can
@@ -100,6 +101,13 @@ Tool Validations
 
 Expected result(s) / behaviour:
     The Charge Point and the Central System are connected.
+
+Implementation notes:
+    - This test only covers the SP1 → SP2/3 upgrade path. The prerequisite allows SP2 as a starting
+      profile, but the test always starts on a plain WS (SP1) connection, and step 11 reconnects via
+      plain WS. To cover SP2 → SP3, step 11 would need to reconnect via WSS without a client
+      certificate rather than plain WS.
+    - Step 9 assumes a single physical connector (connectorId=0 and connectorId=1).
 """
 
 import asyncio

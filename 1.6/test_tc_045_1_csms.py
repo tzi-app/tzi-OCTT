@@ -3,7 +3,8 @@ Test case name      Get Diagnostics
 Test case Id        TC_045_1_CSMS
 Section             3.16.1 (OCPP 1.6J Diagnostics)
 System under test   Central System
-Reference           Table 164, page 141/176 of CompliancyTestTool-TestCaseDocument
+Reference           Table 164, Section 3.16.1, pages 141-142/176 (PDF pages 38-39/73) of
+                    CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
 
 Description         The Charge Point uploads a diagnostics log to a specified location based on a request of the
                     Central System.

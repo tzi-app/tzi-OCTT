@@ -3,7 +3,8 @@ Test case name      Update Charge Point Password for HTTP Basic Authentication
 Test case Id        TC_073_CSMS
 Section             3.21.1. Secure connection setup
 System under test   Central System
-Document ref        Table 184, page 158/176 (OCPP Compliancy Testing Tool - TestCaseDocument, 2025-11)
+Document ref        Table 184, page 158-159/176 (OCPP Compliancy Testing Tool - TestCaseDocument, 2025-11)
+                    PDF: CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, pages 55-56
 
 Description         The Central System can configure a new password for HTTP Basic Authentication, the Central System can
                     send a new value for the BasicAuthPassword Configuration key.
@@ -36,6 +37,10 @@ Tool Validations
         the tool only validates if the new password adheres to the OCPP password requirements:
         - The hexadecimal representation of the password has a maximum of 40 characters.
         - The length of the password must be between 16 and 20 bytes.
+
+        NOTE: The docstring is ambiguous on whether the CP uses the hex string itself or the
+        decoded bytes as the HTTP Basic Auth password. Per OCPP 1.6 convention, the hex string
+        (AuthorizationKey value) is used directly as the password in the Authorization header.
 
     * Step 2:
         (Message: ChangeConfiguration.conf)

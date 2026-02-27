@@ -3,7 +3,8 @@ Test case name      Central Smart Charging - TxProfile
 Test case Id        TC_057_CSMS
 Feature profile     SmartCharging
 
-Document ref        Table 179, pages 152-153/176 (CompliancyTestTool-TestCaseDocument)
+Document ref        Section 3.19.1, Table 179, pages 152-153/176
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
 
 Description         The Central System sets a schedule for a running transaction.
 Purpose             To check whether the Central System is able to set a schedule for a running transaction on a Charge Point.
@@ -13,8 +14,9 @@ Before State:
     Configuration State(s): n/a
     Memory State(s): n/a
     Reusable State(s): Charging
-        NOTE: "Charging" refers to a reusable state defined elsewhere in the document (to be resolved later).
-              Implies a transaction must be running on the Charge Point.
+        (Reusable state "Charging" is defined in Table 201, page 173/176.
+         Requires Authorized state first, then: StatusNotification(Preparing) →
+         StartTransaction → StatusNotification(Charging).)
 
 System under test   Central System
 

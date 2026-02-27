@@ -29,7 +29,8 @@ Tool Validations
       - The key list MUST be empty (no specific keys requested).
 
     * Step 2 (GetConfiguration.conf):
-      - The response MUST contain all required configuration keys.
+      - The response MUST contain all required configuration keys
+        with correct accessibility (R or RW) values.
 
       Core Profile Keys:
         - AuthorizeRemoteTxRequests / R or RW
@@ -65,8 +66,23 @@ Tool Validations
         - ChargingScheduleMaxPeriods / R
         - MaxChargingProfilesInstalled / R
 
+      Reservation:
+        - None
+
+      Remote Trigger:
+        - None
+
 Expected Result
     All required keys are configured.
+    The Central System is able to retrieve the values of all requested
+    configuration keys.
+
+Note
+    The OCTT Tool Validations check that accessibility (R/RW) contains the
+    correct values for each key. The current implementation validates key
+    presence but does not assert readonly flags match the R/RW designations
+    listed above. TODO: consider adding accessibility validation to match
+    the OCTT's actual checks.
 """
 
 import asyncio

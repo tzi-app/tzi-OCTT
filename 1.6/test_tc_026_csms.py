@@ -1,16 +1,16 @@
 """
-Test case name      Remote Start Charging Session - Rejected
+Test case name      Remote Start Charging Session – Rejected
 Test case Id        TC_026_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.9.1 - Core Profile - Remote Actions Error Handling
+Section             3.9.1 - Core Profile - Remote Actions Non-Happy Flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 146, Page 128/176
+Document ref        CompliancyTestTool-TestCaseDocument, Table 145, Page 128/176
 
-Description         This scenario is used to reject a remote start transaction request.
+Description         This scenario is used to reject a RemoteStartTransaction.req.
 
-Purpose             To test if the Central System can handle when the Charge Point rejects
-                    a RemoteStartTransaction request.
+Purpose             To test if the Central System can handle when a Charge Point rejects
+                    a RemoteStartTransaction.req.
 
 Prerequisite(s)     n/a
 
@@ -19,11 +19,12 @@ Before              Configuration State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
+    [The CPO remotely requests a start transaction.]
     1. The Central System sends a RemoteStartTransaction.req
     2. The Charge Point responds with a RemoteStartTransaction.conf
 
 Tool Validations
-    * Step 2 (RemoteStartTransaction.conf): status MUST be "Rejected"
+    * Step 2 (RemoteStartTransaction.conf): status is Rejected
 
 Expected Result     n/a
 """

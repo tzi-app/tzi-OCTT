@@ -2,7 +2,7 @@
 Test case name      Remote Start Transaction with Charging Profile
 Test case Id        TC_059_CSMS
 Feature profile     SmartCharging
-Document ref        Table 182, Section 3.19.4, Pages 156-157/176
+Document ref        Table 182, Section 3.19.4, Pages 156-157/176 (Section 3 PDF pp. 53-54)
 
 Description         The Central System starts a transaction on a Charge Point with a ChargingProfile.
 Purpose             To check whether the Central System can trigger a Charge Point to start a transaction with a

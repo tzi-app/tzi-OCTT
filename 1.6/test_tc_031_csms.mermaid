@@ -1,18 +1,16 @@
 sequenceDiagram
-    participant CP as Charge Point (OCTT)
+    participant CP as Charge Point (Tool)
     participant CS as Central System (SUT)
 
     Note over CP,CS: Test Case: TC_031_CSMS
-    Note over CP,CS: Unlock Connector - Unknown Connector
+    Note over CP,CS: Unlock Connector – Unknown Connector
     Note over CP,CS: OCPP 1.6J - Core Profile
-    Note over CP,CS: Document ref: Section 3.10.2, Table 148, Page 129/176
+    Note over CP,CS: Section 3.10.2, Table 148, Page 129/176
     Note over CP,CS: Prerequisite: n/a
 
     CS->>CP: 1. UnlockConnector.req
-    Note left of CS: connectorId = [unknown connector id]
 
     CP-->>CS: 2. UnlockConnector.conf
-    Note right of CP: status = "NotSupported"
-    Note over CP: Validation: status must be NotSupported
+    Note right of CP: Validation: status is NotSupported
 
-    Note over CP,CS: Purpose: Verify Central System can handle<br/>a Charge Point that does not support UnlockConnector
+    Note over CP,CS: Expected result(s): n/a

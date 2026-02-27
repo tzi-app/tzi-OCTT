@@ -3,7 +3,7 @@ Test case name      Basic Authentication - Valid username/password combination
 Test case Id        TC_085_CSMS
 Section             3.21 Security > 3.21.1 Secure connection setup
 System under test   Central System
-Document ref        Table 195, pages 169-170
+Document ref        Table 195, document pages 169-170 (PDF pages 66-67 of Section 3)
 
 Description         The Charge Point uses Basic authentication to authenticate itself to the Central System, when using
                     security profile 1 or 2.
@@ -21,6 +21,7 @@ Before (Preparations)
 Test Scenario
     1. The Charge Point sends a HTTP upgrade request without an Authorization header to the Central System.
     2. The Central System rejects the connection upgrade request.
+       Note: The expected HTTP status code is not specified. Test assumes 401 Unauthorized.
 
     3. The Charge Point sends a HTTP upgrade request with an Authorization header, containing a
        username/password combination.
@@ -28,6 +29,7 @@ Test Scenario
 
     5. The Charge Point sends a BootNotification.req
     6. The Central System responds with a BootNotification.conf
+       Note: The expected BootNotification status is not specified. Test assumes Accepted.
 
     [Send per connector and connectorId=0.]
     7. The Charge Point sends a StatusNotification.req
@@ -42,8 +44,7 @@ Tool Validations
 
     Post scenario validations: N/a
 
-Expected result(s) / behaviour: n/a
-    NOTE: Not explicitly listed in the CSMS version of the document; the corresponding CS version (TC_085_CS) shows n/a.
+Expected result(s) / behaviour: Not explicitly listed in the CSMS document for this test case.
 """
 
 import asyncio

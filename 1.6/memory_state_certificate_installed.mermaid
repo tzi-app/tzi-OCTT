@@ -1,16 +1,21 @@
 sequenceDiagram
-    participant CP as Charge Point (Tool)
-    participant CS as Central System (SUT)
+    participant CP as Charge Point (SUT)
+    participant CS as Central System (Tool)
 
     Note over CP,CS: Memory State: CertificateInstalled
     Note over CP,CS: OCPP 1.6J (Security Extension)
-    Note over CP,CS: Page 175, Table 203
+    Note over CP,CS: Page 107, Table 119
+
+    CS->>CP: 1. GetInstalledCertificateIds.req
+
+    CP-->>CS: 2. GetInstalledCertificateIds.conf
+    Note over CP: Validation: status should be Accepted
 
     Note over CS: Only send if the certificate<br/>is not already installed
 
-    CS->>CP: 1. InstallCertificate.req
+    CS->>CP: 3. InstallCertificate.req
 
-    CP-->>CS: 2. InstallCertificate.conf
+    CP-->>CS: 4. InstallCertificate.conf
     Note over CP: Validation: status should be Accepted
 
     Note over CP,CS: State is CertificateInstalled

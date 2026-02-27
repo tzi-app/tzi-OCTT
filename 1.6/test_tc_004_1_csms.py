@@ -32,11 +32,15 @@ Scenario
     Expanded scenario (from reusable states):
 
     --- Reusable State: Authorized (Table 200) ---
+    Description: "This state will simulate that the EV Driver is locally
+    authorizing to start a transaction on the simulated Charge Point."
     1. The Charge Point sends an Authorize.req to the Central System.
        - idTag = <Configured Valid IdTag>
     2. The Central System responds with an Authorize.conf.
 
     --- Reusable State: Charging (Table 201) ---
+    Description: "This state will simulate that the Charge Point starts a transaction."
+    Before: Reusable State(s): Authorized
     3. The Charge Point sends a StatusNotification.req to the Central System.
        - connectorId = <Configured ConnectorId>
        - status = Preparing
@@ -50,16 +54,16 @@ Scenario
        - status = Charging
     8. The Central System responds with a StatusNotification.conf.
 
-Tool Validations (from reusable states)
+Tool Validations (TC_004_1 itself has no tool validations; all come from reusable states)
     From Authorized state (Table 200):
         Step 2 (Central System -> Charge Point):
             Message: Authorize.conf
-            - idTagInfo.status SHOULD be "Accepted"
+            - idTagInfo.status should be Accepted
 
     From Charging state (Table 201):
-        Step 6 (Central System -> Charge Point):
+        Step 4 (Central System -> Charge Point):
             Message: StartTransaction.conf
-            - idTagInfo.status SHOULD be "Accepted"
+            - idTagInfo.status should be Accepted
 
 Expected Result(s)  n/a (per official document)
                     (The Charging reusable state expects: "State is Charging")

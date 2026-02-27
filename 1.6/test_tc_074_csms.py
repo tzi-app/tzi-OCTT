@@ -7,6 +7,8 @@ System under test   Central System
 
 Description         When SUT Charge Point, the tool shall take on the role of both Central System and Certificate Authority
                     Server. Which means it will sign the certificate with its own certificate.
+                    NOTE: The description above is verbatim from the PDF. It references "SUT Charge Point" but
+                    this is a CSMS test (SUT = Central System). Possible doc error — to be verified.
 
 Purpose             To check if the Central System is able to request the Charge Point to renew its ChargePointCertificate.
 

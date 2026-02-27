@@ -1,9 +1,9 @@
 """
 Test case name      Secure Firmware Update - Invalid Signature
 Test case Id        TC_081_CSMS
-Document Reference  Table 193, page 166/176 (CompliancyTestTool-TestCaseDocument, 2025-11)
+Document Reference  Table 193, pages 166-167/176 (CompliancyTestTool-TestCaseDocument-CSMS-Section3, 2025-11)
 Section             3.21.3 Secure firmware update
-System under test   Central System  [NOTE: not an explicit field in the test case document, inferred from CSMS suffix - to be verified]
+System under test   Central System (SUT)
 
 Description         The Charge Point validates the Signature and deems it invalid.
 
@@ -39,6 +39,8 @@ Tool Validations
         (Message: SignedUpdateFirmware.req)
         The firmware.location is <Firmware Download URL from test data>
         The firmware.signature is <An invalid signature.>
+        NOTE: Specific values for firmware.location and firmware.signature are CSMS-configuration-dependent.
+              The test asserts their presence but cannot validate exact values.
 
     * Step 3:
         (Message: SignedFirmwareStatusNotification.req)
@@ -84,6 +86,9 @@ async def test_tc_081(connection):
     await asyncio.wait_for(cp._received_signed_update_firmware.wait(), timeout=ACTION_TIMEOUT)
     assert cp._signed_update_firmware_data is not None
     request_id = cp._signed_update_firmware_data['request_id']
+    firmware = cp._signed_update_firmware_data['firmware']
+    assert firmware.get('location'), "firmware.location must be present"
+    assert firmware.get('signature'), "firmware.signature must be present"
 
     # Step 3-4: SignedFirmwareStatusNotification (Downloading)
     await cp.send_signed_firmware_status_notification(

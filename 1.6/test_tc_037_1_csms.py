@@ -6,6 +6,7 @@ Profile             Core
 Section             3.12. Core Profile - Offline behavior Non-Happy Flow
                     3.12.1. Offline Start Transaction - Valid IdTag
 Document ref        Table 150 (Page 131/176)
+                    Source: CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf (physical page 28)
 
 Description         This scenario is used to start a transaction, while being offline.
 
@@ -36,6 +37,9 @@ Test Scenario
     - idTag: <Configured valid idTag>
     - meterStart: <meter value at transaction start>
     - timestamp: <timestamp of transaction start (while offline)>
+      NOTE: The test uses current time (now_iso()) rather than a past timestamp.
+      This is acceptable because the CSMS (SUT) must handle any valid timestamp
+      and the offline scenario is simulated (no actual disconnection occurs).
 2. The Central System responds with a StartTransaction.conf.
 3. The Charge Point sends a StatusNotification.req to the Central System.
     - connectorId: <Configured connectorId>

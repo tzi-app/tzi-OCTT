@@ -2,7 +2,7 @@
 Test case name      Delete a specific certificate from the Charge Point
 Test case Id        TC_076_CSMS
 Section             3.21.1 Secure connection setup
-Reference           Table 188, pages 160-161 (CompliancyTestTool-TestCaseDocument 2025-11)
+Reference           Table 188, pages 161-162 (CompliancyTestTool-TestCaseDocument-CSMS-Section3 2025-11)
 System under test   Central System
 
 Description         To facilitate the management of the Charge Point's installed certificates, a method of deleting an installed
@@ -61,6 +61,19 @@ Tool Validations
         status is Accepted
 
 Expected result(s) / behaviour: n/a
+
+Implementation Note(s):
+    - The docstring does not specify how the OCTT "requests" the Central System to install/delete a certificate
+      (i.e., the triggering mechanism). In practice, the CSMS is expected to initiate these actions autonomously
+      and the test simply waits for them.
+    - The docstring does not specify the expected response for the optional step 7-8 GetInstalledCertificateIds.conf
+      after deletion (e.g., whether status should be NotFound or Accepted with empty data).
+    - The placeholder certificate hash values (issuerNameHash, issuerKeyHash, serialNumber) are arbitrary; the OCTT
+      validates that the CSMS echoes back the same values from step 4 in step 5, not their actual cryptographic
+      correctness.
+    - The docstring specifies the certificate type as "CentralSystemRootCertificate 2" but the test does not assert
+      the certificate_type field in InstallCertificate.req or GetInstalledCertificateIds.req. The tool validations
+      don't require this check, but it could be added for extra confidence.
 """
 
 import asyncio
@@ -110,8 +123,12 @@ async def test_tc_076(connection):
         cp._received_delete_certificate.clear()
         await asyncio.wait_for(cp._received_delete_certificate.wait(), timeout=ACTION_TIMEOUT)
         assert cp._delete_certificate_data is not None
-        # Validate hash algorithm matches what we reported
-        assert cp._delete_certificate_data.get('hash_algorithm') == hash_algo
+        # Validate certificateHashData matches what we reported in step 4
+        expected_hash_data = cp._installed_certificate_hash_data[0]
+        assert cp._delete_certificate_data.get('hash_algorithm') == expected_hash_data['hash_algorithm']
+        assert cp._delete_certificate_data.get('issuer_name_hash') == expected_hash_data['issuer_name_hash']
+        assert cp._delete_certificate_data.get('issuer_key_hash') == expected_hash_data['issuer_key_hash']
+        assert cp._delete_certificate_data.get('serial_number') == expected_hash_data['serial_number']
 
         # Clear hash data after deletion
         cp._installed_certificate_hash_data = []

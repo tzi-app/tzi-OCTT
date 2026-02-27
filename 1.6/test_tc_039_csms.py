@@ -6,6 +6,7 @@ Profile             Core
 Section             3.12.3
 Table               152
 Document page       132-133/176
+PDF reference       CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, physical pages 29-30
 
 Description         This scenario is used to start and stop a transaction, while the Charge
                     Point is offline.
@@ -15,7 +16,7 @@ Purpose             To test if the Central System is able to handle queued trans
 
 System under test   Central System (SUT)
 
-Prerequisite(s)     Before: n/a
+Prerequisite(s)     n/a
 
 Configuration State(s):
     n/a
@@ -39,18 +40,17 @@ Test Scenario
 4. The Central System responds with a StopTransaction.conf
 
     NOTE: The official test case document does not include field-level details for the
-    steps above. The following fields are inferred from the OCPP 1.6 specification and
-    may be sent by the OCTT tool (to be verified):
-    - Step 1: connectorId, idTag, meterStart, timestamp
-    - Step 3: transactionId (from Step 2), reason=Local, meterStop, timestamp
+    steps above (e.g. connectorId, idTag, meterStart, timestamp for StartTransaction.req;
+    transactionId, meterStop, timestamp for StopTransaction.req). These are inferred from
+    the OCPP 1.6 specification and may be sent by the OCTT tool (to be verified).
 
 Tool validations
-* Step 2:
-    (Message: StartTransaction.conf)
-    idTagInfo.status is Accepted
 * Step 3:
     (Message: StopTransaction.req)
     reason is Local
+* Step 2:
+    (Message: StartTransaction.conf)
+    idTagInfo.status is Accepted
 
 Expected result(s) / behaviour
     n/a

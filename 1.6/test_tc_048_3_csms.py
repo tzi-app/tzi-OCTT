@@ -4,7 +4,6 @@ Test case Id        TC_048_3_CSMS
 OCPP Version        1.6J
 Document Ref        Table 170, pages 145-146/176 (CompliancyTestTool-TestCaseDocument 2025-11)
 Section             3.17.1 - Reservation of a Connector
-                    NOTE: Section reference is from the OCPP 1.6 specification, not the test case document.
 
 Description         The Central System attempts to reserve a Connector, but the reservation
                     is not made, instead the status Unavailable is returned by the Charge Point.
@@ -24,6 +23,8 @@ Test Scenario
    - connectorId: <Configured ConnectorId>
    - type: Inoperative
 2. The Charge Point responds with a ChangeAvailability.conf to the Central System.
+   NOTE: The document does not specify the ChangeAvailability.conf status value.
+         The implementation uses "Accepted" (CP accepts the Inoperative request).
 3. The Charge Point sends a StatusNotification.req to the Central System.
    - status: Unavailable
    - connectorId: same connectorId as in step 1

@@ -2,7 +2,8 @@
 Test case name      Trigger Message
 Test case Id        TC_054_CSMS
 Feature profile     Remote Trigger
-Document ref        Table 176, pages 149-150, Section 3.18.1
+Document ref        OCPP 1.6 CSMS Test Cases Section 3 (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
+                    Table 176, pages 149-150, Section 3.18.1
 
 Description         The Central System triggers a message from the Charge Point.
 
@@ -100,6 +101,12 @@ Tool validations
 
 Expected result(s)
     The Central System can request a message from a Charge Point and receive the requested message.
+
+Note(s)
+    - Step 18 allows NotImplemented response for FirmwareStatusNotification, making steps 19-20
+      conditional. This test always responds Accepted and sends the FirmwareStatusNotification
+      (happy path). The NotImplemented branch (where steps 19-20 are skipped) is not exercised.
+      The spec does not clarify whether the CSMS test must cover both branches.
 """
 
 import asyncio
@@ -127,9 +134,10 @@ async def test_tc_054(connection):
     start_task = asyncio.create_task(cp.start())
 
     # --- Cycle 1: MeterValues ---
-    # Step 1-2: Wait for TriggerMessage(MeterValues)
+    # Step 1-2: Wait for TriggerMessage(MeterValues, connectorId=CONNECTOR_ID)
     await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
     assert cp._trigger_message_requested == 'MeterValues'
+    assert cp._trigger_message_connector_id == CONNECTOR_ID
     cp._received_trigger_message.clear()
 
     # Step 3-4: CP sends MeterValues.req
@@ -148,9 +156,10 @@ async def test_tc_054(connection):
     await cp.send_heartbeat()
 
     # --- Cycle 3: StatusNotification ---
-    # Step 9-10: Wait for TriggerMessage(StatusNotification)
+    # Step 9-10: Wait for TriggerMessage(StatusNotification, connectorId=CONNECTOR_ID)
     await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
     assert cp._trigger_message_requested == 'StatusNotification'
+    assert cp._trigger_message_connector_id == CONNECTOR_ID
     cp._received_trigger_message.clear()
 
     # Step 11-12: CP sends StatusNotification.req

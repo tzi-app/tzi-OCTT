@@ -4,7 +4,7 @@ Test case Id        TC_011_1_CSMS
 Chapter             3.4.2 (under 3.4. Core Profile - Remote actions Happy flow)
 Protocol            OCPP 1.6J
 Document ref        Page 115-116, Table 130
-                    (OCPP Compliancy Testing Tool - TestCaseDocument, 2025-11)
+                    (OCPP Compliancy Testing Tool - TestCaseDocument - CSMS - Section 3, 2025-11)
 
 System under test   Central System
 
@@ -23,35 +23,37 @@ Before
 Test Scenario
     1.  The Central System sends a RemoteStartTransaction.req to the Charge Point.
     2.  The Charge Point responds with a RemoteStartTransaction.conf.
-        - status: Accepted
     3.  The Charge Point sends an Authorize.req to the Central System.
     4.  The Central System responds with an Authorize.conf.
-        - idTagInfo.status: Accepted
     5.  The Charge Point sends a StatusNotification.req to the Central System.
-        - status: Preparing
     6.  The Central System responds with a StatusNotification.conf.
     [EV driver plugs in the cable.]
     7.  The Charge Point sends a StartTransaction.req to the Central System.
     8.  The Central System responds with a StartTransaction.conf.
-        - idTagInfo.status: Accepted
     9.  The Charge Point sends a StatusNotification.req to the Central System.
-        - status: Charging
     10. The Central System responds with a StatusNotification.conf.
 
 Tool validation(s)
+    Charge Point (Tool) side:
     * Step 2:  (Message: RemoteStartTransaction.conf)  status is Accepted
-    * Step 4:  (Message: Authorize.conf)  idTagInfo.status is Accepted
     * Step 5:  (Message: StatusNotification.req)  status is Preparing
-    * Step 8:  (Message: StartTransaction.conf)  idTagInfo.status is Accepted
     * Step 9:  (Message: StatusNotification.req)  status is Charging
+
+    Central System (SUT) side:
+    * Step 6:  (Message: Authorize.conf)  idTagInfo.status is Accepted
+    * Step 8:  (Message: StartTransaction.conf)  idTagInfo.status is Accepted
+
+    NOTE: The official document lists the Authorize.conf validation as "Step 6", but in the
+    scenario numbering Authorize.conf is Step 4 and Step 6 is StatusNotification.conf.
+    This appears to be a numbering error in the official document (to be verified).
 
 Expected result(s) / behaviour
     n/a
 
 Notes
-    - Field-level details in scenario steps (idTag, connectorId, meterStart, etc.) are
-      inferred from the OCPP 1.6 specification; the official test case document only lists
-      message names without field details (to be verified).
+    - The official test case document scenario steps only list message names; field-level
+      details (idTag, connectorId, meterStart, etc.) are not specified in the scenario
+      but some appear in the tool validations (idTagInfo.status, status).
 """
 
 import asyncio

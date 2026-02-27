@@ -5,7 +5,8 @@ Test case Id        TC_005_1_CSMS
 OCPP Version        1.6j
 Chapter             3.2.4 - Start Charging Session
 System under test   Central System
-Document Reference  Table 126, pages 112-113/176
+Document Reference  CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
+                    Table 126, pages 112-113/176 (section 3.2.4)
 
 Description         This scenario is used to stop the transaction when the cable is disconnected
                     at EV side.

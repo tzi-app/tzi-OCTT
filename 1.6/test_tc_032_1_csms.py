@@ -1,26 +1,26 @@
 """
-Test case name      Power Failure Boot - Stop Transactions
+Test case name      Power failure boot charging point-configured to stop transaction(s)
 Test case Id        TC_032_1_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.11.1 - Core Profile - Power Failure
+Section             3.11 - Core Profile - Power Failure Non-Happy Flow
+                    3.11.1 - Power failure boot charging point-configured to stop transaction(s)
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 151, Page 131/176
+Document ref        CompliancyTestTool-TestCaseDocument-CSMS-Section3, Table 149, Page 130/176
 
-Description         This scenario simulates a power failure during an active transaction.
-                    After reboot the Charge Point stops any interrupted transactions.
+Description         This scenario is used to stop all transactions, when a power failure occurred.
 
-Purpose             To test if the Central System can handle when the Charge Point reboots
-                    after a power failure and stops the transaction that was active.
+Purpose             To test if the Central System can handle when a Charge Point stops all
+                    transactions, when a power failure occurred.
 
 Prerequisite(s)     n/a
 
 Before              Configuration State(s): n/a
                     Memory State(s): n/a
-                    Reusable State(s): Charging (Authorized → Charging)
+                    Reusable State(s): Charging
 
 Test Scenario
-    [Power failure occurs.]
+    [Disconnect and reconnect the power of the Charge Point.]
     1. The Charge Point sends a BootNotification.req
     2. The Central System responds with a BootNotification.conf
     [Send per connector and connectorId=0.]
@@ -30,9 +30,13 @@ Test Scenario
     6. The Central System responds with a StopTransaction.conf
 
 Tool Validations
-    * Step 2 (BootNotification.conf): status is Accepted
-    * Step 3 (StatusNotification.req): status is Available (for non-charging connectors)
+    Charge Point (Tool):
+    * Step 3 (StatusNotification.req): connectorId is <The connector which had the ongoing
+      transaction>, status is Finishing
+    * Step 3 (StatusNotification.req): The other StatusNotification messages, status is Available
     * Step 5 (StopTransaction.req): reason is PowerLoss
+    Central System (SUT):
+    * Step 2 (BootNotification.conf): status is Accepted
 
 Expected Result     n/a
 """

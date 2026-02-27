@@ -4,12 +4,12 @@ Test case Id        TC_011_2_CSMS
 Chapter             3.4. Core Profile - Remote actions Happy flow
 Section             3.4.3. Remote Start Charging Session – Time Out
 Protocol            OCPP 1.6J
-Doc reference       CompliancyTestTool-TestCaseDocument (2025-11), Table 131, Page 116/176
+Doc reference       CompliancyTestTool-TestCaseDocument-CSMS-Section3 (2025-11), Table 131, Page 116-117/176
 
 System under test   Central System
 
 Description         This scenario is used to set a connector back to available, after receiving a
-                    RemoteStartTransaction.req and it takes too long to plug in the cable.
+                    RemoteStartTransaction.req and it takes to long to plugin the cable.
 
 Purpose             To test if the Central System can handle when a Charge Point sets the connector back to
                     available, after reaching the configured connection timeout.

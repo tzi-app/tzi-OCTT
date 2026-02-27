@@ -1,17 +1,18 @@
 """
-Test case name      Start Charging Session - Authorize Invalid
+Test case name      Start Charging Session – Authorize invalid
 Test case Id        TC_023_1_CSMS
 OCPP Version        1.6J
 Profile             Core
-Section             3.8.1 - Core Profile - Authorization Error Handling
+Section             3.8.1 - Core Profile - Basic Actions Non-happy flow
 System under test   Central System (CSMS)
-Document ref        CompliancyTestTool-TestCaseDocument, Table 141, Page 126/176
+Document ref        Table 141, Page 126/176, Section 3.8.1
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf, 2025-11)
 
-Description         This scenario is used to check when the Charge Point sends an Authorize
-                    request with an invalid idTag.
+Description         This scenario is used to inform the Charge Point that the EV Driver is
+                    not Authorized to start a transaction.
 
-Purpose             To test if the Central System responds with the status Invalid when an
-                    unknown idTag is used for authorization.
+Purpose             To test if the Central System is able to provide an invalid response on
+                    an Authorize.req.
 
 Prerequisite(s)     n/a
 
@@ -20,12 +21,13 @@ Before              Configuration State(s): n/a
                     Reusable State(s): n/a
 
 Test Scenario
-    1. The Charge Point sends an Authorize.req with an invalid idTag.
+    [EV driver presents invalid identification.]
+    1. The Charge Point sends an Authorize.req.
     2. The Central System responds with an Authorize.conf.
 
-Tool Validations
-    * Step 2 (Authorize.conf):
-      - idTagInfo.status MUST be "Invalid"
+Tool Validations (Central System SUT side)
+    * Step 1 (Message: Authorize.conf):
+      - idTagInfo.status is Invalid
 
 Expected Result     n/a
 """
