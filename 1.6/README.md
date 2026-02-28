@@ -1,7 +1,7 @@
 # OCPP 1.6J CSMS Compliance Test Suite
 
 Test suite for validating CSMS compliance against the OCPP 1.6J specification.
-Based on the TZI CompliancyTestTool-TestCaseDocument (2025-11).
+Based on the OCTT Compliancy Test Tool - TestCaseDocument (2025-11).
 
 ## Prerequisites
 
