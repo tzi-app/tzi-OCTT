@@ -63,6 +63,7 @@ import os
 import pytest
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -80,6 +81,10 @@ async def test_tc_075_2(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send InstallCertificate.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'install-certificate', {
+        'certificateType': 'CentralSystemRootCertificate',
+        'certificate': '-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIUEjRWeJQ=\n-----END CERTIFICATE-----',
+    }))
     await asyncio.wait_for(cp._received_install_certificate.wait(), timeout=ACTION_TIMEOUT)
     assert cp._install_certificate_data is not None
     assert cp._install_certificate_data['certificate_type'] == 'CentralSystemRootCertificate'
@@ -93,6 +98,9 @@ async def test_tc_075_2(connection):
     }]
 
     # Step 3-4: Wait for CSMS to send GetInstalledCertificateIds.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-installed-certificate-ids', {
+        'certificateType': 'CentralSystemRootCertificate',
+    }))
     await asyncio.wait_for(cp._received_get_installed_certificate_ids.wait(), timeout=ACTION_TIMEOUT)
     assert cp._get_installed_certificate_ids_data['certificate_type'] == 'CentralSystemRootCertificate'
 

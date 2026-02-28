@@ -83,7 +83,7 @@ Implementation Notes:
       verify that ALL four cipher suites are simultaneously supported from a single connection.
     - The commonName RDN is validated for existence but NOT compared against the actual server FQDN.
       check_hostname=False is used because the test environment may use localhost/IP rather than a real FQDN.
-      A production-grade validation would compare the CN value against the hostname from CSMS_WSS_ADDRESS.
+      A production-grade validation would compare the CN value against the hostname from CSMS_ADDRESS.
 
 Ambiguities in the test case document:
     - Step 9: "[Send per connector and connectorId=0.]" — unclear whether this means "for each connector
@@ -105,7 +105,7 @@ from utils import (create_ssl_context, get_basic_auth_headers, get_tls_info,
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
-CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 
 
 @pytest.mark.asyncio
@@ -118,7 +118,7 @@ async def test_tc_086():
 
     # Step 1-6: TLS handshake + WebSocket upgrade with basic auth
     ws = await websockets.connect(
-        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
         subprotocols=['ocpp1.6'],
         ssl=ssl_ctx,
         extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
@@ -135,15 +135,22 @@ async def test_tc_086():
 
     # Verify negotiated cipher is from the required set
     REQUIRED_CIPHERS = {
+        # TLS 1.2 IANA names
         'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256',
         'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384',
         'TLS_RSA_WITH_AES_128_GCM_SHA256',
         'TLS_RSA_WITH_AES_256_GCM_SHA384',
-        # OpenSSL names
+        # TLS 1.2 OpenSSL names
         'ECDHE-ECDSA-AES128-GCM-SHA256',
         'ECDHE-ECDSA-AES256-GCM-SHA384',
         'AES128-GCM-SHA256',
         'AES256-GCM-SHA384',
+        # TLS 1.3 cipher suites (same AES-GCM algorithms).
+        # Not part of the OCPP 1.6 Security Whitepaper (which predates TLS 1.3),
+        # but accepted here: TLS 1.3 is strictly more secure and rejecting it
+        # would prevent legitimate security hardening by CSMS operators.
+        'TLS_AES_128_GCM_SHA256',
+        'TLS_AES_256_GCM_SHA384',
     }
     cipher_name = tls_info['cipher'][0]
     assert cipher_name in REQUIRED_CIPHERS, \

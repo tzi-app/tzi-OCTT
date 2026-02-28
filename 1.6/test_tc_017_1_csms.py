@@ -45,10 +45,12 @@ from ocpp.v16.enums import UnlockStatus
 
 from charge_point import TziChargePoint16
 from utils import get_basic_auth_headers
+from trigger import trigger_v16
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
 
 
 @pytest.mark.asyncio
@@ -63,6 +65,7 @@ async def test_tc_017_1(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send UnlockConnector.req → CP responds Unlocked
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'unlock-connector', {'connectorId': CONNECTOR_ID}))
     await asyncio.wait_for(cp._received_unlock_connector.wait(), timeout=ACTION_TIMEOUT)
     assert cp._unlock_connector_id is not None
 

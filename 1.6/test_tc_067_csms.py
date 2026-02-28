@@ -91,11 +91,13 @@ Expected result(s) / behaviour:
 import asyncio
 import os
 import pytest
+from datetime import datetime, timedelta
 
 from ocpp.v16.enums import ChargingProfileStatus, ClearChargingProfileStatus
 
 from charge_point import TziChargePoint16
 from reusable_states import booted, authorized, charging
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -120,10 +122,67 @@ async def test_tc_067(connection):
     start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
 
     # Steps 1-2: Wait for 3 SetChargingProfile.req messages and capture each
+    # Define 3 charging profiles to trigger
+    _profile_payloads = [
+        {
+            'connectorId': 0,
+            'csChargingProfiles': {
+                'chargingProfileId': 100,
+                'stackLevel': 1,
+                'chargingProfilePurpose': 'ChargePointMaxProfile',
+                'chargingProfileKind': 'Absolute',
+                'validFrom': datetime.now().isoformat() + 'Z',
+                'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+                'chargingSchedule': {
+                    'startSchedule': datetime.now().isoformat() + 'Z',
+                    'chargingRateUnit': 'A',
+                    'duration': 86400,
+                    'chargingSchedulePeriod': [{'startPeriod': 0, 'limit': 16.0, 'numberPhases': 3}],
+                },
+            },
+        },
+        {
+            'connectorId': CONNECTOR_ID,
+            'csChargingProfiles': {
+                'chargingProfileId': 101,
+                'stackLevel': 1,
+                'chargingProfilePurpose': 'TxDefaultProfile',
+                'chargingProfileKind': 'Absolute',
+                'validFrom': datetime.now().isoformat() + 'Z',
+                'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+                'chargingSchedule': {
+                    'startSchedule': datetime.now().isoformat() + 'Z',
+                    'chargingRateUnit': 'A',
+                    'duration': 86400,
+                    'chargingSchedulePeriod': [{'startPeriod': 0, 'limit': 16.0, 'numberPhases': 3}],
+                },
+            },
+        },
+        {
+            'connectorId': CONNECTOR_ID,
+            'csChargingProfiles': {
+                'chargingProfileId': 102,
+                'stackLevel': 1,
+                'chargingProfilePurpose': 'TxProfile',
+                'chargingProfileKind': 'Absolute',
+                'transactionId': transaction_id,
+                'validFrom': datetime.now().isoformat() + 'Z',
+                'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+                'chargingSchedule': {
+                    'startSchedule': datetime.now().isoformat() + 'Z',
+                    'chargingRateUnit': 'A',
+                    'duration': 86400,
+                    'chargingSchedulePeriod': [{'startPeriod': 0, 'limit': 16.0, 'numberPhases': 3}],
+                },
+            },
+        },
+    ]
+
     profiles = []
     for i in range(3):
         if i > 0:
             cp._received_set_charging_profile.clear()
+        asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'set-charging-profile', _profile_payloads[i]))
         await asyncio.wait_for(cp._received_set_charging_profile.wait(), timeout=ACTION_TIMEOUT)
         profiles.append(cp._set_charging_profile_data)
 
@@ -156,10 +215,17 @@ async def test_tc_067(connection):
     assert len(set(stack_levels)) == 1
 
     # Steps 3-8: Wait for 3 ClearChargingProfile.req messages and validate each
+    _clear_payloads = [
+        {'id': 100},
+        {'connectorId': CONNECTOR_ID, 'chargingProfilePurpose': 'TxDefaultProfile', 'stackLevel': 1},
+        {},
+    ]
+
     clears = []
     for i in range(3):
         if i > 0:
             cp._received_clear_charging_profile.clear()
+        asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'clear-charging-profile', _clear_payloads[i]))
         await asyncio.wait_for(cp._received_clear_charging_profile.wait(), timeout=ACTION_TIMEOUT)
         clears.append(cp._clear_charging_profile_data)
 

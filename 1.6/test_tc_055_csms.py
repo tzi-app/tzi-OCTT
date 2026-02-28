@@ -43,6 +43,7 @@ import pytest
 from ocpp.v16.enums import TriggerMessageStatus
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -64,6 +65,7 @@ async def test_tc_055(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send TriggerMessage.req, CP responds with Rejected
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'MeterValues'}))
     await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
     assert cp._trigger_message_requested == 'MeterValues'
 

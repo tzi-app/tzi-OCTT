@@ -46,6 +46,7 @@ import os
 import pytest
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import get_basic_auth_headers, now_iso
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -77,6 +78,11 @@ async def test_tc_066(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send GetCompositeSchedule.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-composite-schedule', {
+        'connectorId': CONNECTOR_ID,
+        'duration': 86400,
+        'chargingRateUnit': 'A',
+    }))
     await asyncio.wait_for(cp._received_get_composite_schedule.wait(), timeout=ACTION_TIMEOUT)
     data = cp._get_composite_schedule_data
     assert data is not None

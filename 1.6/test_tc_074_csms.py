@@ -80,60 +80,93 @@ import websockets
 from ocpp.v16.enums import GenericStatus
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import (
-    create_ssl_context, generate_csr, get_basic_auth_headers,
+    create_ssl_context, generate_csr,
     save_cert_chain_to_temp, save_private_key_to_temp,
 )
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
-TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+SP3_CP = os.environ['SECURITY_PROFILE_3_CP']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
-CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("connection",
-                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
-                         indirect=True)
-async def test_tc_074(connection):
-    assert connection.open
-    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+async def test_tc_074():
+    # Profile 3 (mTLS): connect with client certificate, no BasicAuth
+    ssl_ctx = create_ssl_context(
+        ca_cert=os.environ.get('TLS_CA_CERT'),
+        client_cert=os.environ.get('TLS_CLIENT_CERT'),
+        client_key=os.environ.get('TLS_CLIENT_KEY'),
+        check_hostname=False,
+    )
+    ws = await websockets.connect(
+        uri=f'{CSMS_ADDRESS}/{SP3_CP}',
+        subprotocols=['ocpp1.6'],
+        ssl=ssl_ctx,
+    )
+    assert ws.open
+    cp = TziChargePoint16(SP3_CP, ws)
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send ExtendedTriggerMessage.req
+    asyncio.create_task(trigger_v16(SP3_CP, 'extended-trigger-message', {
+        'requestedMessage': 'SignChargePointCertificate',
+    }))
     await asyncio.wait_for(cp._received_extended_trigger.wait(), timeout=ACTION_TIMEOUT)
     assert cp._extended_trigger_requested == 'SignChargePointCertificate'
 
     # Step 3-4: CP generates a CSR and sends SignCertificate.req
-    csr_pem, private_key = generate_csr(BASIC_AUTH_CP)
+    csr_pem, private_key = generate_csr(SP3_CP)
     sign_response = await cp.send_sign_certificate(csr=csr_pem)
     assert sign_response.status == GenericStatus.accepted
 
+    # Generate a self-signed cert from the CSR for testing
+    from cryptography.x509 import load_pem_x509_csr, CertificateBuilder, random_serial_number
+    from cryptography.hazmat.primitives import hashes, serialization
+    import datetime as dt
+
+    csr_obj = load_pem_x509_csr(csr_pem.encode())
+    cert = (
+        CertificateBuilder()
+        .subject_name(csr_obj.subject)
+        .issuer_name(csr_obj.subject)
+        .public_key(csr_obj.public_key())
+        .serial_number(random_serial_number())
+        .not_valid_before(dt.datetime.now(dt.timezone.utc))
+        .not_valid_after(dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=365))
+        .sign(private_key, hashes.SHA256())
+    )
+    cert_chain_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+
     # Step 5-6: Wait for CSMS to send CertificateSigned.req
+    asyncio.create_task(trigger_v16(SP3_CP, 'certificate-signed', {
+        'certificateChain': cert_chain_pem,
+    }))
     await asyncio.wait_for(cp._received_certificate_signed.wait(), timeout=ACTION_TIMEOUT)
     cert_chain = cp._certificate_signed_chain
     assert cert_chain is not None
 
     start_task.cancel()
-    await connection.close()
+    await ws.close()
 
     # Step 7-8: CP reconnects with the new certificate
     cert_path = save_cert_chain_to_temp(cert_chain)
     key_path = save_private_key_to_temp(private_key)
     try:
-        ssl_ctx = create_ssl_context(
+        ssl_ctx_new = create_ssl_context(
             ca_cert=os.environ.get('TLS_CA_CERT'),
             client_cert=cert_path,
             client_key=key_path,
             check_hostname=False,
         )
-        ws = await websockets.connect(
-            uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        ws2 = await websockets.connect(
+            uri=f'{CSMS_ADDRESS}/{SP3_CP}',
             subprotocols=['ocpp1.6'],
-            ssl=ssl_ctx,
+            ssl=ssl_ctx_new,
         )
-        assert ws.open
-        await ws.close()
+        assert ws2.open
+        await ws2.close()
     finally:
         os.unlink(cert_path)
         os.unlink(key_path)

@@ -82,6 +82,7 @@ import pytest
 
 from charge_point import TziChargePoint16
 from utils import get_basic_auth_headers
+from trigger import trigger_v16
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
@@ -104,6 +105,10 @@ async def test_tc_076(connection):
         # Step 1-2: Wait for CSMS to send InstallCertificate.req
         if iteration > 0:
             cp._received_install_certificate.clear()
+        asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'install-certificate', {
+            'certificateType': 'CentralSystemRootCertificate',
+            'certificate': '-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIUEjRWeJQ=\n-----END CERTIFICATE-----',
+        }))
         await asyncio.wait_for(cp._received_install_certificate.wait(), timeout=ACTION_TIMEOUT)
         assert cp._install_certificate_data is not None
 
@@ -117,10 +122,21 @@ async def test_tc_076(connection):
 
         # Step 3-4: Wait for CSMS to send GetInstalledCertificateIds.req
         cp._received_get_installed_certificate_ids.clear()
+        asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-installed-certificate-ids', {
+            'certificateType': 'CentralSystemRootCertificate',
+        }))
         await asyncio.wait_for(cp._received_get_installed_certificate_ids.wait(), timeout=ACTION_TIMEOUT)
 
         # Step 5-6: Wait for CSMS to send DeleteCertificate.req
         cp._received_delete_certificate.clear()
+        asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'delete-certificate', {
+            'certificateHashData': {
+                'hashAlgorithm': hash_algo,
+                'issuerNameHash': 'aabbccdd',
+                'issuerKeyHash': 'eeff0011',
+                'serialNumber': f'SN{iteration}',
+            },
+        }))
         await asyncio.wait_for(cp._received_delete_certificate.wait(), timeout=ACTION_TIMEOUT)
         assert cp._delete_certificate_data is not None
         # Validate certificateHashData matches what we reported in step 4

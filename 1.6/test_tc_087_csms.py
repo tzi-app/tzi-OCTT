@@ -79,9 +79,8 @@ from ocpp.v16.enums import RegistrationStatus
 from charge_point import TziChargePoint16
 from utils import create_ssl_context
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
-TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
-CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
+SP3_CP = os.environ['SECURITY_PROFILE_3_CP']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 
 
 @pytest.mark.asyncio
@@ -94,9 +93,9 @@ async def test_tc_087():
         check_hostname=False,
     )
 
-    # Step 1-6: TLS handshake with client cert + WebSocket upgrade
+    # Step 1-6: TLS handshake with client cert + WebSocket upgrade (no BasicAuth for SP3)
     ws = await websockets.connect(
-        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        uri=f'{CSMS_ADDRESS}/{SP3_CP}',
         subprotocols=['ocpp1.6'],
         ssl=ssl_ctx,
     )
@@ -108,7 +107,7 @@ async def test_tc_087():
     tls_version = ssl_obj.version()
     assert tls_version in ('TLSv1.2', 'TLSv1.3')
 
-    cp = TziChargePoint16(BASIC_AUTH_CP, ws)
+    cp = TziChargePoint16(SP3_CP, ws)
     start_task = asyncio.create_task(cp.start())
 
     # Step 7-8: BootNotification

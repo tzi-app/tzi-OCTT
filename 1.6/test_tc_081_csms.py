@@ -62,11 +62,13 @@ Expected result(s) / behaviour:
 import asyncio
 import os
 import pytest
+from datetime import datetime
 
 from ocpp.v16.enums import FirmwareStatus
 
 from charge_point import TziChargePoint16
 from utils import get_basic_auth_headers
+from trigger import trigger_v16
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
@@ -83,6 +85,15 @@ async def test_tc_081(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send SignedUpdateFirmware.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'signed-update-firmware', {
+        'requestId': 1,
+        'firmware': {
+            'location': 'http://firmware.example.com/signed-fw.bin',
+            'retrieveDateTime': datetime.now().isoformat() + 'Z',
+            'signature': 'aW52YWxpZHNpZ25hdHVyZQ==',
+            'signingCertificate': '-----BEGIN CERTIFICATE-----\nMIIBkTCB+wIUEjRWeJQ=\n-----END CERTIFICATE-----',
+        },
+    }))
     await asyncio.wait_for(cp._received_signed_update_firmware.wait(), timeout=ACTION_TIMEOUT)
     assert cp._signed_update_firmware_data is not None
     request_id = cp._signed_update_firmware_data['request_id']

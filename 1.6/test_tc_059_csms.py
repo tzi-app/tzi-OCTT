@@ -101,17 +101,20 @@ chargingProfile field in the RemoteStartTransaction.req - to be confirmed.
 
 import asyncio
 import os
+from datetime import datetime, timedelta
 import pytest
 
 from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
 CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+VALID_ID_TAG = os.environ.get('VALID_ID_TOKEN', 'TEST_TAG')
 
 
 @pytest.mark.asyncio
@@ -124,6 +127,26 @@ async def test_tc_059(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send RemoteStartTransaction.req with charging profile
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'remote-start-transaction', {
+        'idTag': VALID_ID_TAG,
+        'connectorId': CONNECTOR_ID,
+        'chargingProfile': {
+            'chargingProfileId': 1,
+            'stackLevel': 0,
+            'chargingProfilePurpose': 'TxProfile',
+            'chargingProfileKind': 'Absolute',
+            'validFrom': datetime.now().isoformat() + 'Z',
+            'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+            'chargingSchedule': {
+                'startSchedule': datetime.now().isoformat() + 'Z',
+                'chargingRateUnit': 'A',
+                'duration': 86400,
+                'chargingSchedulePeriod': [
+                    {'startPeriod': 0, 'limit': 6.0, 'numberPhases': 3},
+                ],
+            },
+        },
+    }))
     await asyncio.wait_for(cp._received_remote_start.wait(), timeout=ACTION_TIMEOUT)
     id_tag = cp._remote_start_id_tag
     assert id_tag is not None

@@ -55,6 +55,7 @@ from ocpp.v16.enums import ChargePointStatus, Reason, UnlockStatus
 from charge_point import TziChargePoint16
 from reusable_states import booted, authorized, charging
 from utils import get_basic_auth_headers
+from trigger import trigger_v16
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
@@ -79,6 +80,7 @@ async def test_tc_018_1(connection):
     start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
 
     # Step 1-2: Wait for CSMS to send UnlockConnector.req → CP responds Unlocked
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'unlock-connector', {'connectorId': CONNECTOR_ID}))
     await asyncio.wait_for(cp._received_unlock_connector.wait(), timeout=ACTION_TIMEOUT)
 
     # Step 3-4: StatusNotification(Finishing)

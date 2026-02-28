@@ -44,6 +44,7 @@ from ocpp.v16.enums import RemoteStartStopStatus
 
 from charge_point import TziChargePoint16
 from reusable_states import booted, authorized, charging
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -70,6 +71,7 @@ async def test_tc_028(connection):
     await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
 
     # Step 1-2: Wait for CSMS to send RemoteStopTransaction.req → CP responds Rejected
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'remote-stop-transaction', {'transactionId': 999999}))
     await asyncio.wait_for(cp._received_remote_stop.wait(), timeout=ACTION_TIMEOUT)
 
     start_task.cancel()

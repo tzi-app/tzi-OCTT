@@ -51,10 +51,12 @@ Expected result(s) / behaviour: n/a
 
 import asyncio
 import os
+import ssl
 import pytest
 import websockets
 
 from charge_point import TziChargePoint16
+from trigger import set_basic_auth_password, trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -73,6 +75,10 @@ async def test_tc_073(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send ChangeConfiguration.req
+    trigger_task = asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'change-configuration', {
+        'key': 'AuthorizationKey',
+        'value': 'AABBCCDDEEFF00112233445566778899AABBCCDD',
+    }))
     await asyncio.wait_for(cp._received_change_configuration.wait(), timeout=ACTION_TIMEOUT)
 
     # Verify the key is AuthorizationKey
@@ -86,14 +92,30 @@ async def test_tc_073(connection):
     byte_length = len(new_password) // 2
     assert 16 <= byte_length <= 20, f"Password length {byte_length} bytes, expected 16-20"
 
+    # Wait for the CSMS to receive the CALLRESULT and update the stored password
+    await asyncio.wait_for(trigger_task, timeout=ACTION_TIMEOUT)
+
     start_task.cancel()
     await connection.close()
 
     # Step 3: CP disconnects and reconnects with the new password
+    ssl_ctx = None
+    if CSMS_ADDRESS.startswith('wss://'):
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ca_cert = os.environ.get('TLS_CA_CERT')
+        if ca_cert:
+            ssl_ctx.load_verify_locations(ca_cert)
+        else:
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
     ws = await websockets.connect(
         uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
         subprotocols=['ocpp1.6'],
         extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, new_password),
+        ssl=ssl_ctx,
     )
     assert ws.open
     await ws.close()
+
+    # Restore original password so other tests are not affected
+    await set_basic_auth_password(BASIC_AUTH_CP, TEST_USER_PASSWORD)

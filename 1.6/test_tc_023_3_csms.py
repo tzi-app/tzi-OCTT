@@ -39,6 +39,7 @@ import pytest
 from ocpp.v16.enums import AuthorizationStatus
 
 from charge_point import TziChargePoint16
+from trigger import create_token
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -54,6 +55,9 @@ async def test_tc_023_3(connection):
     assert connection.open
     cp = TziChargePoint16(BASIC_AUTH_CP, connection)
     start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: ensure the blocked token exists in the CSMS
+    await create_token(BLOCKED_ID_TAG, "Blocked")
 
     # Step 1-2: Authorize with blocked idTag → expect Blocked
     auth_response = await cp.send_authorize(BLOCKED_ID_TAG)

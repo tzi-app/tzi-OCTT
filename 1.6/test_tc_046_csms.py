@@ -70,11 +70,13 @@ NOTE (to be fixed later):
 import asyncio
 import os
 import pytest
+from datetime import datetime, timedelta
 
 from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
 
 from charge_point import TziChargePoint16
 from reusable_states import authorized
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -94,6 +96,12 @@ async def test_tc_046(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send ReserveNow.req → CP responds Accepted
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'reserve-now', {
+        'connectorId': CONNECTOR_ID,
+        'expiryDate': (datetime.now() + timedelta(hours=1)).isoformat() + 'Z',
+        'idTag': VALID_ID_TAG,
+        'reservationId': 1,
+    }))
     await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
     assert cp._reserve_now_data is not None
     # CS-side validations: ReserveNow.req fields

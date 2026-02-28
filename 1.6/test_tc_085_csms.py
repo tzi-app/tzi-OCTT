@@ -56,7 +56,7 @@ from websockets import InvalidStatusCode
 from ocpp.v16.enums import RegistrationStatus
 
 from charge_point import TziChargePoint16
-from utils import get_basic_auth_headers
+from utils import create_ssl_context, get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
@@ -66,11 +66,16 @@ CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 @pytest.mark.asyncio
 async def test_tc_085_no_auth_rejected():
     """Step 1-2: Connection without Authorization header is rejected."""
+    ssl_ctx = create_ssl_context(
+        ca_cert=os.environ.get('TLS_CA_CERT'),
+        check_hostname=False,
+    ) if CSMS_ADDRESS.startswith('wss://') else None
     with pytest.raises(InvalidStatusCode) as exc:
         await websockets.connect(
             uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
             subprotocols=['ocpp1.6'],
             extra_headers={},
+            ssl=ssl_ctx,
         )
     assert exc.value.status_code == 401
 

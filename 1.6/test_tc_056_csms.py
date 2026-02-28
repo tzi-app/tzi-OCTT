@@ -50,11 +50,13 @@ Expected result(s) / behaviour: n/a
 
 import asyncio
 import os
+from datetime import datetime, timedelta
 import pytest
 
 from ocpp.v16.enums import ChargingProfileStatus
 
 from charge_point import TziChargePoint16
+from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -73,6 +75,25 @@ async def test_tc_056(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send SetChargingProfile.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'set-charging-profile', {
+        'connectorId': CONNECTOR_ID,
+        'csChargingProfiles': {
+            'chargingProfileId': 1,
+            'stackLevel': 0,
+            'chargingProfilePurpose': 'TxDefaultProfile',
+            'chargingProfileKind': 'Absolute',
+            'validFrom': datetime.now().isoformat() + 'Z',
+            'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+            'chargingSchedule': {
+                'startSchedule': datetime.now().isoformat() + 'Z',
+                'chargingRateUnit': 'A',
+                'duration': 86400,
+                'chargingSchedulePeriod': [
+                    {'startPeriod': 0, 'limit': 6.0, 'numberPhases': 3},
+                ],
+            },
+        },
+    }))
     await asyncio.wait_for(cp._received_set_charging_profile.wait(), timeout=ACTION_TIMEOUT)
 
     # Validate SetChargingProfile.req fields

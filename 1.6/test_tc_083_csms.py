@@ -120,12 +120,12 @@ from ocpp.v16.enums import RegistrationStatus, ResetType
 
 from charge_point import TziChargePoint16
 from utils import create_ssl_context, get_basic_auth_headers
+from trigger import trigger_v16
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-CSMS_WSS_ADDRESS = os.environ.get('CSMS_WSS_ADDRESS', 'wss://localhost:8082')
 
 
 @pytest.mark.asyncio
@@ -138,11 +138,16 @@ async def test_tc_083(connection):
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Wait for CSMS to send ChangeConfiguration.req for SecurityProfile
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'change-configuration', {
+        'key': 'SecurityProfile',
+        'value': '2',
+    }))
     await asyncio.wait_for(cp._received_change_configuration.wait(), timeout=ACTION_TIMEOUT)
     assert cp._change_configuration_key == 'SecurityProfile'
     assert cp._change_configuration_value in ('2', '3')
 
     # Step 3-4: Wait for CSMS to send Reset.req (Hard)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'reset', {'type': 'Hard'}))
     await asyncio.wait_for(cp._received_reset.wait(), timeout=ACTION_TIMEOUT)
     assert cp._reset_type == ResetType.hard
 
@@ -157,7 +162,7 @@ async def test_tc_083(connection):
         check_hostname=False,
     )
     ws = await websockets.connect(
-        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
         subprotocols=['ocpp1.6'],
         ssl=ssl_ctx,
         extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
@@ -193,7 +198,7 @@ async def test_tc_083(connection):
 
     # Step 13-14: Reconnect with higher security profile (restore connection)
     ws2 = await websockets.connect(
-        uri=f'{CSMS_WSS_ADDRESS}/{BASIC_AUTH_CP}',
+        uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
         subprotocols=['ocpp1.6'],
         ssl=ssl_ctx,
         extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),

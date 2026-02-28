@@ -38,6 +38,7 @@ import pytest
 from ocpp.v16.enums import AuthorizationStatus
 
 from charge_point import TziChargePoint16
+from trigger import create_token
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
@@ -53,6 +54,9 @@ async def test_tc_023_2(connection):
     assert connection.open
     cp = TziChargePoint16(BASIC_AUTH_CP, connection)
     start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: ensure the expired token exists in the CSMS
+    await create_token(EXPIRED_ID_TAG, "Expired")
 
     # Step 1-2: Authorize with expired idTag → expect Expired
     auth_response = await cp.send_authorize(EXPIRED_ID_TAG)
