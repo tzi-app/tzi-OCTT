@@ -34,10 +34,7 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import (
     RegistrationStatusEnumType, ConnectorStatusEnumType, ResetStatusEnumType
 )
@@ -55,20 +52,11 @@ CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 
 
 @pytest.mark.asyncio
-async def test_tc_b_25():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_25(connection):
     """Reset EVSE - Without ongoing transaction: CSMS resets specific EVSE."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._reset_response_status = ResetStatusEnumType.accepted
     start_task = asyncio.create_task(cp.start())
 
@@ -93,4 +81,3 @@ async def test_tc_b_25():
                  f"evseId={cp._reset_data['evse_id']}")
 
     start_task.cancel()
-    await ws.close()

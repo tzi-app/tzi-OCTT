@@ -72,6 +72,7 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import trigger_v201
 from utils import create_ssl_context, generate_csr
 
 logging.basicConfig(level=logging.INFO)
@@ -105,7 +106,11 @@ async def test_tc_a_13():
     cp._certificate_signed_response_status = CertificateSignedStatusEnumType.accepted
     start_task = asyncio.create_task(cp.start())
 
-    # Step 1-2: Wait for CSMS to send TriggerMessageRequest(SignCombinedCertificate)
+    # Step 1-2: Trigger CSMS to send TriggerMessageRequest(SignCombinedCertificate)
+    asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+        'requestedMessage': 'SignCombinedCertificate',
+    }))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,

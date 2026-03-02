@@ -46,10 +46,7 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
@@ -74,20 +71,11 @@ EXPECTED_VARIABLES = {
 
 
 @pytest.mark.asyncio
-async def test_tc_b_08():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_08(connection):
     """Get Variables - limit to max: CSMS must not exceed MaxItemsPerMessageGetVariables."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._get_variables_values = {
         'DeviceDataCtrlr.ItemsPerMessage': '4',
         'DeviceDataCtrlr.BytesPerMessage': '4096',
@@ -146,4 +134,3 @@ async def test_tc_b_08():
     logging.info(f"Validated GetVariablesRequest split sizes {batch_sizes} and variables {sorted(EXPECTED_VARIABLES)}")
 
     start_task.cancel()
-    await ws.close()

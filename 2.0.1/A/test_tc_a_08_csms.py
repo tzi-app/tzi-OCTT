@@ -136,7 +136,8 @@ async def test_tc_a_08():
     cp = TziChargePoint(cp_id, ws)
     start_task = asyncio.create_task(cp.start())
 
-    boot_response = await cp.send_boot_notification()
+    # B01.FR.12: For SP3, serialNumber must match the client certificate CN
+    boot_response = await cp.send_boot_notification_with_serial(cp_id)
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)

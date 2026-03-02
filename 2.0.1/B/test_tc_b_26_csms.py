@@ -40,10 +40,7 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import (
     RegistrationStatusEnumType, ConnectorStatusEnumType, ResetStatusEnumType
 )
@@ -65,20 +62,11 @@ VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
 
 
 @pytest.mark.asyncio
-async def test_tc_b_26():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_26(connection):
     """Reset EVSE - With Ongoing Transaction - OnIdle: scheduled EVSE reset after transaction."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._reset_response_status = ResetStatusEnumType.scheduled
     start_task = asyncio.create_task(cp.start())
 
@@ -146,4 +134,3 @@ async def test_tc_b_26():
     await cp.send_transaction_event_request(ended_event)
 
     start_task.cancel()
-    await ws.close()

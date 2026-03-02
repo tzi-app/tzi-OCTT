@@ -236,6 +236,18 @@ class TziChargePoint(ChargePoint):
         response = await self.call(payload)
         return response
 
+    async def send_boot_notification_with_serial(self, serial_number):
+        payload = call.BootNotification(
+            charging_station={
+                'model': 'CP Model 1.0',
+                'vendor_name': 'tzi.app',
+                'serial_number': serial_number,
+            },
+            reason="PowerUp"
+        )
+        response = await self.call(payload)
+        return response
+
     async def send_status_notification(self, connector_id, status, evse_id=1):
         logging.info(f"Sending StatusNotification for evse {evse_id} connector {connector_id} with status {status}...")
 

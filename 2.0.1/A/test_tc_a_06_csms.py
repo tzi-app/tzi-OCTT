@@ -147,7 +147,12 @@ async def test_tc_a_06(security_profile):
     cp = TziChargePoint(cp_id, ws)
     start_task = asyncio.create_task(cp.start())
 
-    boot_response = await cp.send_boot_notification()
+    # B01.FR.12: For SP3, serialNumber must match the client certificate CN
+    # (which equals the station external_id). Without it, CSMS closes the connection.
+    if security_profile == 3:
+        boot_response = await cp.send_boot_notification_with_serial(cp_id)
+    else:
+        boot_response = await cp.send_boot_notification()
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)

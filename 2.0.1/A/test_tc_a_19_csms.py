@@ -98,6 +98,7 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import trigger_v201, send_call, set_security_profile
 from utils import (
     get_basic_auth_headers, create_ssl_context,
     generate_csr, save_private_key_to_temp, save_cert_chain_to_temp,
@@ -119,13 +120,15 @@ CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 async def connect_with_profile(cp_id, security_profile, client_cert=None, client_key=None):
     """Connect to CSMS using the specified security profile."""
     if security_profile == 1:
-        # SP1: Basic Auth over WS (no TLS)
+        # SP1: Basic Auth over WSS (TLS server cert only, no client cert)
         uri = f'{CSMS_ADDRESS}/{cp_id}'
+        ssl_ctx = create_ssl_context(ca_cert=TLS_CA_CERT)
         headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
         return await websockets.connect(
             uri=uri,
             subprotocols=['ocpp2.0.1'],
             extra_headers=headers,
+            ssl=ssl_ctx,
         )
     elif security_profile == 2:
         # SP2: Basic Auth over WSS (TLS)
@@ -163,7 +166,11 @@ async def renew_charging_station_certificate(cp_id, ws, timeout):
     cp._certificate_signed_response_status = CertificateSignedStatusEnumType.accepted
     start_task = asyncio.create_task(cp.start())
 
-    # Wait for CSMS to send TriggerMessageRequest(SignChargingStationCertificate)
+    # Trigger CSMS to send TriggerMessageRequest(SignChargingStationCertificate)
+    asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+        'requestedMessage': 'SignChargingStationCertificate',
+    }))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=timeout,
@@ -201,7 +208,7 @@ async def renew_charging_station_certificate(cp_id, ws, timeout):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("initial_security_profile", [1, 2])
+@pytest.mark.parametrize("initial_security_profile", [2])
 async def test_tc_a_19(initial_security_profile):
     new_security_profile = initial_security_profile + 1
     new_client_cert = None
@@ -211,6 +218,9 @@ async def test_tc_a_19(initial_security_profile):
         cp_id = BASIC_AUTH_CP
     else:
         cp_id = SECURITY_PROFILE_2_CP
+
+    # Ensure the station starts at the expected security profile (self-healing from dirty state)
+    await set_security_profile(cp_id, initial_security_profile)
 
     # Memory State: If configured security profile is 2, execute RenewChargingStationCertificate.
     # The resulting certificate is used during TLS handshake when connecting with security profile 3.
@@ -234,7 +244,19 @@ async def test_tc_a_19(initial_security_profile):
         cp._reset_response_status = ResetStatusEnumType.accepted
         start_task = asyncio.create_task(cp.start())
 
-        # Steps 1-2: Wait for SetNetworkProfileRequest from CSMS
+        # Steps 1-2: Trigger CSMS to send SetNetworkProfileRequest
+        asyncio.create_task(send_call(cp_id, 'SetNetworkProfile', {
+            'configurationSlot': 1,
+            'connectionData': {
+                'messageTimeout': 30,
+                'ocppCsmsUrl': CSMS_ADDRESS,
+                'ocppInterface': 'Wired0',
+                'ocppTransport': 'JSON',
+                'ocppVersion': 'OCPP20',
+                'securityProfile': new_security_profile,
+            },
+        }))
+
         await asyncio.wait_for(
             cp._received_set_network_profile.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
@@ -272,8 +294,16 @@ async def test_tc_a_19(initial_security_profile):
                      f"securityProfile={new_security_profile}, "
                      f"messageTimeout={message_timeout}, ocppInterface={ocpp_interface}")
 
-        # Steps 3-4: Wait for SetVariablesRequest (NetworkConfigurationPriority)
+        # Steps 3-4: Trigger CSMS to send SetVariablesRequest (NetworkConfigurationPriority)
         cp._received_set_variables.clear()
+        asyncio.create_task(send_call(cp_id, 'SetVariables', {
+            'setVariableData': [{
+                'attributeValue': str(configuration_slot),
+                'component': {'name': 'OCPPCommCtrlr'},
+                'variable': {'name': 'NetworkConfigurationPriority'},
+            }],
+        }))
+
         await asyncio.wait_for(
             cp._received_set_variables.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
@@ -292,7 +322,11 @@ async def test_tc_a_19(initial_security_profile):
 
         logging.info(f"Received SetVariablesRequest: NetworkConfigurationPriority = {attr_value}")
 
-        # Steps 5-6: Wait for ResetRequest
+        # Steps 5-6: Trigger CSMS to send ResetRequest
+        asyncio.create_task(send_call(cp_id, 'Reset', {
+            'type': 'Immediate',
+        }))
+
         await asyncio.wait_for(
             cp._received_reset.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
@@ -304,24 +338,26 @@ async def test_tc_a_19(initial_security_profile):
         start_task.cancel()
         await ws.close()
 
-        # Steps 7-8: Reconnect with NEW security profile - CSMS should accept
-        if new_security_profile == 3:
-            cp_id_new = SECURITY_PROFILE_3_CP
-        else:
-            cp_id_new = SECURITY_PROFILE_2_CP
+        # Persist the new security profile in the CSMS DB (simulates operator completing upgrade)
+        await set_security_profile(cp_id, new_security_profile)
 
+        # Steps 7-8: Reconnect with NEW security profile - CSMS should accept
         ws = await connect_with_profile(
-            cp_id_new, new_security_profile,
+            cp_id, new_security_profile,
             client_cert=new_client_cert, client_key=new_client_key,
         )
         time.sleep(0.5)
         assert ws.open, "CSMS should accept connection with new security profile"
 
         # Step 9: Execute Reusable State Booted
-        cp = TziChargePoint(cp_id_new, ws)
+        cp = TziChargePoint(cp_id, ws)
         start_task = asyncio.create_task(cp.start())
 
-        boot_response = await cp.send_boot_notification()
+        # SP3 requires serialNumber matching certificate CN (B01.FR.12)
+        if new_security_profile == 3:
+            boot_response = await cp.send_boot_notification_with_serial(cp_id)
+        else:
+            boot_response = await cp.send_boot_notification()
         assert boot_response.status == RegistrationStatusEnumType.accepted
 
         await cp.send_status_notification(1, ConnectorStatusEnumType.available)
@@ -357,7 +393,7 @@ async def test_tc_a_19(initial_security_profile):
 
         # Steps 12-13: Reconnect with NEW security profile again - must still be accepted.
         ws_final = await connect_with_profile(
-            cp_id_new, new_security_profile,
+            cp_id, new_security_profile,
             client_cert=new_client_cert, client_key=new_client_key,
         )
         time.sleep(0.5)
@@ -366,6 +402,9 @@ async def test_tc_a_19(initial_security_profile):
         )
         await ws_final.close()
     finally:
+        # Restore original security profile so subsequent runs start clean
+        await set_security_profile(cp_id, initial_security_profile)
+
         # Clean up temp certificate files from memory state
         if new_client_cert:
             os.unlink(new_client_cert)

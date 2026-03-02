@@ -5,7 +5,7 @@ Use case Id(s)      A01
 Requirement(s)      A01.FR.02, A01.FR.04, A01.FR.05
 
 Requirement Details:
-    A01.FR.02: To set a Charging Station’s basic authorization password via OCPP, the CSMS SHALL send the Charging Station a SetVariablesRequest message with the BasicAuthPassword Configuration Variable. A. Security 30/491 Part 2 - Specification
+    A01.FR.02: To set a Charging Station's basic authorization password via OCPP, the CSMS SHALL send the Charging Station a SetVariablesRequest message with the BasicAuthPassword Configuration Variable. A. Security 30/491 Part 2 - Specification
     A01.FR.04: While the CSMS SHALL still accepts a connection from the Charging Station, it MAY restrict the functionality that the Charging Station can use. The CSMS can use the BootNotification state: Pending for this. During the Pending state, the CSMS can for example retry to update the credentials.
         Precondition: A01.FR.02 AND The Charging Station responds to this SetVariablesRequest with a SetVariablesResponse with status other than Accepted
     A01.FR.05: After the Password has been changed, the Charging Station SHALL send a SecurityEventNotification.
@@ -69,11 +69,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from trigger import trigger_v201
+from utils import get_basic_auth_headers, create_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+TLS_CA_CERT = os.environ['TLS_CA_CERT']
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
@@ -84,12 +86,14 @@ async def test_tc_a_10():
     cp_id = BASIC_AUTH_CP
     uri = f'{CSMS_ADDRESS}/{cp_id}'
 
-    # Step 1: Connect with current password and wait for SetVariablesRequest
+    # Step 1: Connect with current password
+    ssl_ctx = create_ssl_context(ca_cert=TLS_CA_CERT)
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
 
     time.sleep(0.5)
@@ -99,21 +103,43 @@ async def test_tc_a_10():
     cp._set_variables_response_status = SetVariableStatusEnumType.rejected
     start_task = asyncio.create_task(cp.start())
 
-    # Wait for CSMS to send SetVariablesRequest with BasicAuthPassword
-    await asyncio.wait_for(
-        cp._received_set_variables.wait(),
-        timeout=CSMS_ACTION_TIMEOUT,
+    # Trigger the CSMS to send SetVariablesRequest with BasicAuthPassword
+    trigger_task = asyncio.create_task(
+        trigger_v201(cp_id, 'update-basic-auth-password')
     )
 
-    # Validate the SetVariablesRequest content
-    assert cp._set_variables_data is not None
-    set_var = cp._set_variables_data[0]
-    assert set_var.get('variable', {}).get('name') == 'BasicAuthPassword', \
-        f"Expected BasicAuthPassword variable, got: {set_var}"
+    # Wait for CSMS to send SetVariablesRequest with BasicAuthPassword
+    # (CSMS may send other SetVariablesRequests first, e.g. TariffFallbackMessage)
+    deadline = asyncio.get_event_loop().time() + CSMS_ACTION_TIMEOUT
+    set_var = None
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        assert remaining > 0, "Timed out waiting for SetVariablesRequest with BasicAuthPassword"
+        cp._received_set_variables.clear()
+        await asyncio.wait_for(
+            cp._received_set_variables.wait(),
+            timeout=remaining,
+        )
+        assert cp._set_variables_data is not None
+        for var in cp._set_variables_data:
+            if var.get('variable', {}).get('name') == 'BasicAuthPassword':
+                set_var = var
+                break
+        if set_var is not None:
+            break
+        logging.info(f"Ignoring non-BasicAuthPassword SetVariablesRequest: {cp._set_variables_data}")
+
     assert set_var.get('component', {}).get('name') == 'SecurityCtrlr', \
         f"Expected SecurityCtrlr component, got: {set_var}"
 
     logging.info("Rejected password change from CSMS")
+
+    # Wait for trigger to complete (CSMS processes the Rejected response)
+    try:
+        await asyncio.wait_for(trigger_task, timeout=CSMS_ACTION_TIMEOUT)
+    except Exception:
+        # Trigger may fail since the CP rejected — that's expected
+        pass
 
     # Close the current connection
     start_task.cancel()
@@ -125,6 +151,7 @@ async def test_tc_a_10():
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=old_headers,
+        ssl=ssl_ctx,
     )
 
     time.sleep(0.5)

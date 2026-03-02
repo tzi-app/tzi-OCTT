@@ -33,7 +33,7 @@ import pytest
 import websockets
 from websockets import InvalidHandshake, InvalidStatusCode
 
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
@@ -46,6 +46,7 @@ async def test_tc_b_58():
     cp_id = BASIC_AUTH_CP
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
+    ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
 
     # Step 1-2: Unsupported subprotocol only -> handshake must be rejected.
     with pytest.raises((InvalidStatusCode, InvalidHandshake)):
@@ -53,6 +54,7 @@ async def test_tc_b_58():
             uri=uri,
             subprotocols=['ocpp0.1'],
             extra_headers=headers,
+            ssl=ssl_ctx,
         )
 
     # Step 3-4: Offer unsupported + supported -> CSMS must select supported OCPP version.
@@ -60,6 +62,7 @@ async def test_tc_b_58():
         uri=uri,
         subprotocols=['ocpp0.1', 'ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     try:
         assert ws.open
