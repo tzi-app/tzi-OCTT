@@ -82,7 +82,7 @@ from utils import create_ssl_context, get_tls_info
 
 logging.basicConfig(level=logging.INFO)
 
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
@@ -130,7 +130,7 @@ async def test_tc_a_07():
         client_key=TLS_CLIENT_KEY,
     )
 
-    uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+    uri = f'{CSMS_ADDRESS}/{cp_id}'
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],

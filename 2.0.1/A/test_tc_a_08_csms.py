@@ -87,7 +87,7 @@ from utils import create_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
@@ -99,7 +99,7 @@ SECURITY_PROFILE_3_CP = os.environ['SECURITY_PROFILE_3_CP_A']
 @pytest.mark.asyncio
 async def test_tc_a_08():
     cp_id = SECURITY_PROFILE_3_CP
-    uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+    uri = f'{CSMS_ADDRESS}/{cp_id}'
 
     # Step 1-4: Connect with invalid client certificate - CSMS should reject
     invalid_ctx = create_ssl_context(

@@ -106,7 +106,6 @@ from utils import (
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
@@ -130,7 +129,7 @@ async def connect_with_profile(cp_id, security_profile, client_cert=None, client
         )
     elif security_profile == 2:
         # SP2: Basic Auth over WSS (TLS)
-        uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+        uri = f'{CSMS_ADDRESS}/{cp_id}'
         ssl_ctx = create_ssl_context(ca_cert=TLS_CA_CERT)
         headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
         return await websockets.connect(
@@ -141,7 +140,7 @@ async def connect_with_profile(cp_id, security_profile, client_cert=None, client
         )
     elif security_profile == 3:
         # SP3: Client Cert over WSS (mTLS, no basic auth)
-        uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+        uri = f'{CSMS_ADDRESS}/{cp_id}'
         ssl_ctx = create_ssl_context(
             ca_cert=TLS_CA_CERT,
             client_cert=client_cert or TLS_CLIENT_CERT,
