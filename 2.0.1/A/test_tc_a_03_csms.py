@@ -29,7 +29,7 @@ import random
 import pytest
 import websockets
 from websockets import InvalidStatusCode
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
@@ -45,11 +45,13 @@ def _generate_random_password(min_len=16, max_len=40):
 
 async def _expect_http_upgrade_rejected(headers):
     uri = f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}'
+    ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
     with pytest.raises(InvalidStatusCode) as exc:
         await websockets.connect(
             uri=uri,
             subprotocols=['ocpp2.0.1'],
             extra_headers=headers,
+            ssl=ssl_ctx,
         )
     assert exc.value.status_code == 401
 

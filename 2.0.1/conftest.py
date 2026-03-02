@@ -15,7 +15,10 @@ for _path in (str(_VERSION_ROOT), str(_PROJECT_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+from utils import build_default_ssl_context
+
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+
 
 @dataclass
 class MockConnection:
@@ -27,9 +30,11 @@ async def connection(request):
     cp_name, headers = request.param
     try:
         uri = f'{CSMS_ADDRESS}/{cp_name}'
+        ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
         ws = await websockets.connect(uri=uri,
                                       subprotocols=['ocpp2.0.1'],
-                                      extra_headers=headers)
+                                      extra_headers=headers,
+                                      ssl=ssl_ctx)
     except InvalidStatusCode as e:
         yield MockConnection(open=False, status_code=e.status_code)
         return
