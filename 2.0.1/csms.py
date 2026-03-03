@@ -76,6 +76,8 @@ import ssl
 import base64
 import http
 import os
+import urllib.request
+import urllib.error
 from copy import deepcopy
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -292,6 +294,7 @@ MASTERPASS_GROUP_ID = _cfg_str('MASTERPASS_GROUP_ID')
 TOKEN_DATABASE = {
     '100000C01':       {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
     '100000C39B':      {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
+    'TAG-001':         {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
     '100000C02':       {'status': 'Invalid'},
     '100000C06':       {'status': 'Blocked'},
     '100000C07':       {'status': 'Expired'},
@@ -299,6 +302,7 @@ TOKEN_DATABASE = {
     'D001001':         {'status': 'Accepted'},
     'D001002':         {'status': 'Accepted'},
     'DE-TZI-C12345-A': {'status': 'Accepted'},
+    'EMAID001':        {'status': 'Accepted'},
 }
 
 
@@ -320,6 +324,97 @@ if _revoked_file and os.path.exists(_revoked_file):
         logging.info(f"Loaded {len(_REVOKED_SERIALS)} revoked serial(s) from {_revoked_file}")
     except Exception as _e:
         logging.warning(f"Failed to load revoked cert hash data: {_e}")
+
+
+# ─── OCSP Helpers ────────────────────────────────────────────────────────────
+
+def _parse_ocsp_response_status(der_data: bytes) -> str:
+    """Parse DER-encoded OCSP response to extract cert status."""
+
+    def _read_tlv(data, offset):
+        tag = data[offset]; offset += 1
+        length = data[offset]; offset += 1
+        if length & 0x80:
+            n = length & 0x7F
+            length = int.from_bytes(data[offset:offset + n], 'big')
+            offset += n
+        return tag, length, offset
+
+    try:
+        # OCSPResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, 0)
+        # responseStatus ENUMERATED
+        _, elen, pos = _read_tlv(der_data, pos)
+        if der_data[pos] != 0:
+            return 'unknown'
+        pos += elen
+        # [0] EXPLICIT responseBytes
+        _, _, pos = _read_tlv(der_data, pos)
+        # ResponseBytes SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # responseType OID — skip
+        _, olen, pos = _read_tlv(der_data, pos)
+        pos += olen
+        # response OCTET STRING
+        _, _, pos = _read_tlv(der_data, pos)
+        # BasicOCSPResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # tbsResponseData SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # responderID — skip
+        _, rlen, pos = _read_tlv(der_data, pos)
+        pos += rlen
+        # producedAt — skip
+        _, plen, pos = _read_tlv(der_data, pos)
+        pos += plen
+        # responses SEQUENCE OF
+        _, _, pos = _read_tlv(der_data, pos)
+        # SingleResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # certID SEQUENCE — skip
+        _, clen, pos = _read_tlv(der_data, pos)
+        pos += clen
+        # certStatus tag
+        tag = der_data[pos]
+        if tag == 0x80:
+            return 'good'
+        elif tag & 0xE0 == 0xA0 and (tag & 0x1F) == 1:
+            return 'revoked'
+        else:
+            return 'unknown'
+    except (IndexError, ValueError):
+        return 'unknown'
+
+
+def _query_ocsp_responder(responder_url: str) -> str:
+    """Query an OCSP responder URL via HTTP POST, return 'good'/'revoked'/'unknown'."""
+    try:
+        req = urllib.request.Request(
+            responder_url,
+            data=b'\x30\x00',
+            headers={'Content-Type': 'application/ocsp-request'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return _parse_ocsp_response_status(resp.read())
+    except Exception as e:
+        logging.warning(f"OCSP query to {responder_url} failed: {e}")
+        return 'unknown'
+
+
+def _extract_ocsp_url_from_cert(pem_cert: str):
+    """Extract OCSP responder URL from certificate AIA extension."""
+    try:
+        from cryptography import x509 as cx509
+        from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
+        cert = cx509.load_pem_x509_certificate(pem_cert.encode('utf-8'))
+        aia = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
+        for desc in aia.value:
+            if desc.access_method == AuthorityInformationAccessOID.OCSP:
+                return desc.access_location.value
+    except Exception as e:
+        logging.warning(f"Failed to extract OCSP URL from certificate: {e}")
+    return None
 
 
 # ─── Global State ────────────────────────────────────────────────────────────
@@ -1964,22 +2059,46 @@ class ChargePointHandler(ChargePoint):
         response_kwargs = {'id_token_info': id_token_info}
 
         if iso15118_certificate_hash_data or certificate:
-            # Check if any certificate in the hash data is revoked
-            revoked = False
+            ocsp_status = None
+            # Try live OCSP query first
             if iso15118_certificate_hash_data:
                 for hash_entry in iso15118_certificate_hash_data:
-                    serial = (hash_entry.get('serial_number', '')
-                              if isinstance(hash_entry, dict)
-                              else getattr(hash_entry, 'serial_number', ''))
-                    if serial in _REVOKED_SERIALS:
-                        revoked = True
+                    responder_url = (hash_entry.get('responder_url', '')
+                                     if isinstance(hash_entry, dict)
+                                     else getattr(hash_entry, 'responder_url', ''))
+                    if responder_url:
+                        ocsp_status = await asyncio.to_thread(
+                            _query_ocsp_responder, responder_url)
                         break
-            if revoked:
+            elif certificate:
+                ocsp_url = _extract_ocsp_url_from_cert(certificate)
+                if ocsp_url:
+                    ocsp_status = await asyncio.to_thread(
+                        _query_ocsp_responder, ocsp_url)
+
+            if ocsp_status == 'revoked':
                 response_kwargs['certificate_status'] = 'CertificateRevoked'
                 id_token_info['status'] = 'Invalid'
-                logging.info(f"Certificate revoked for {self.id}")
-            else:
+                logging.info(f"OCSP: certificate revoked for {self.id}")
+            elif ocsp_status == 'good':
                 response_kwargs['certificate_status'] = 'Accepted'
+                logging.info(f"OCSP: certificate accepted for {self.id}")
+            else:
+                # Fallback to local revoked serials check
+                revoked = False
+                if iso15118_certificate_hash_data:
+                    for hash_entry in iso15118_certificate_hash_data:
+                        serial = (hash_entry.get('serial_number', '')
+                                  if isinstance(hash_entry, dict)
+                                  else getattr(hash_entry, 'serial_number', ''))
+                        if serial in _REVOKED_SERIALS:
+                            revoked = True
+                            break
+                if revoked:
+                    response_kwargs['certificate_status'] = 'CertificateRevoked'
+                    id_token_info['status'] = 'Invalid'
+                else:
+                    response_kwargs['certificate_status'] = 'Accepted'
 
         return call_result.Authorize(**response_kwargs)
 

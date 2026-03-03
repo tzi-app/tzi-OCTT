@@ -75,7 +75,7 @@ from tzi_charge_point import TziChargePoint
 from reusable_states.energy_transfer_started import energy_transfer_started
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, validate_schema
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_C']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 
