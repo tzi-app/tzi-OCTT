@@ -107,7 +107,7 @@ async def test_tc_a_13():
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Trigger CSMS to send TriggerMessageRequest(SignCombinedCertificate)
-    asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+    trigger_task = asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
         'requestedMessage': 'SignCombinedCertificate',
     }))
 
@@ -115,6 +115,7 @@ async def test_tc_a_13():
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._trigger_message_data == 'SignCombinedCertificate', \
         f"Expected SignCombinedCertificate, got: {cp._trigger_message_data}"

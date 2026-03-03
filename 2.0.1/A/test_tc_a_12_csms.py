@@ -109,7 +109,7 @@ async def test_tc_a_12():
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: Trigger CSMS to send TriggerMessageRequest(SignV2GCertificate)
-    asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+    trigger_task = asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
         'requestedMessage': 'SignV2GCertificate',
     }))
 
@@ -117,6 +117,7 @@ async def test_tc_a_12():
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._trigger_message_data == 'SignV2GCertificate', \
         f"Expected SignV2GCertificate, got: {cp._trigger_message_data}"

@@ -167,7 +167,7 @@ async def renew_charging_station_certificate(cp_id, ws, timeout):
     start_task = asyncio.create_task(cp.start())
 
     # Trigger CSMS to send TriggerMessageRequest(SignChargingStationCertificate)
-    asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+    trigger_task = asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
         'requestedMessage': 'SignChargingStationCertificate',
     }))
 
@@ -175,6 +175,7 @@ async def renew_charging_station_certificate(cp_id, ws, timeout):
         cp._received_trigger_message.wait(),
         timeout=timeout,
     )
+    await trigger_task
     assert cp._trigger_message_data == 'SignChargingStationCertificate', \
         f"Expected SignChargingStationCertificate, got: {cp._trigger_message_data}"
 
@@ -245,7 +246,7 @@ async def test_tc_a_19(initial_security_profile):
         start_task = asyncio.create_task(cp.start())
 
         # Steps 1-2: Trigger CSMS to send SetNetworkProfileRequest
-        asyncio.create_task(send_call(cp_id, 'SetNetworkProfile', {
+        trigger_task = asyncio.create_task(send_call(cp_id, 'SetNetworkProfile', {
             'configurationSlot': 1,
             'connectionData': {
                 'messageTimeout': 30,
@@ -261,6 +262,7 @@ async def test_tc_a_19(initial_security_profile):
             cp._received_set_network_profile.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        await trigger_task
 
         assert cp._set_network_profile_data is not None
         conn_data = cp._set_network_profile_data['connection_data']
@@ -296,7 +298,7 @@ async def test_tc_a_19(initial_security_profile):
 
         # Steps 3-4: Trigger CSMS to send SetVariablesRequest (NetworkConfigurationPriority)
         cp._received_set_variables.clear()
-        asyncio.create_task(send_call(cp_id, 'SetVariables', {
+        trigger_task = asyncio.create_task(send_call(cp_id, 'SetVariables', {
             'setVariableData': [{
                 'attributeValue': str(configuration_slot),
                 'component': {'name': 'OCPPCommCtrlr'},
@@ -308,6 +310,7 @@ async def test_tc_a_19(initial_security_profile):
             cp._received_set_variables.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        await trigger_task
 
         assert cp._set_variables_data is not None
         set_var = cp._set_variables_data[0]
@@ -323,7 +326,7 @@ async def test_tc_a_19(initial_security_profile):
         logging.info(f"Received SetVariablesRequest: NetworkConfigurationPriority = {attr_value}")
 
         # Steps 5-6: Trigger CSMS to send ResetRequest
-        asyncio.create_task(send_call(cp_id, 'Reset', {
+        trigger_task = asyncio.create_task(send_call(cp_id, 'Reset', {
             'type': 'Immediate',
         }))
 
@@ -331,6 +334,7 @@ async def test_tc_a_19(initial_security_profile):
             cp._received_reset.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        await trigger_task
 
         logging.info(f"Received ResetRequest: {cp._reset_data}")
 
