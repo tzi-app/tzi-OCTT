@@ -4,7 +4,7 @@ Python (`pytest`) implementation of OCTT scenarios for CSMS (Central System Mana
 
 Based on:
 - `OCPP 2.0.1 Specification, Edition 4 (2025-12-03)`
-- `OCPP 1.6J Specification 2025-11)`
+- `OCPP 1.6J Specification, (2025-11)`
 
 ## Project Structure
 
