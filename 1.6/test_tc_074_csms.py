@@ -86,7 +86,7 @@ from utils import (
     save_cert_chain_to_temp, save_private_key_to_temp,
 )
 
-SP3_CP = os.environ['SECURITY_PROFILE_3_CP']
+SP3_CP = os.environ['CP16_SP3']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 

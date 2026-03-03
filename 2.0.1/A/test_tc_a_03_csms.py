@@ -31,7 +31,7 @@ import websockets
 from websockets import InvalidStatusCode
 from utils import get_basic_auth_headers, build_default_ssl_context
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 

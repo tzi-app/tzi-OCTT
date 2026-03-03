@@ -45,7 +45,7 @@ from charge_point import TziChargePoint16
 from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
 VALID_ID_TAG = os.environ.get('VALID_ID_TOKEN', 'TEST_TAG')

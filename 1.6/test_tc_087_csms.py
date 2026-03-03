@@ -79,7 +79,7 @@ from ocpp.v16.enums import RegistrationStatus
 from charge_point import TziChargePoint16
 from utils import create_ssl_context
 
-SP3_CP = os.environ['SECURITY_PROFILE_3_CP']
+SP3_CP = os.environ['CP16_SP3']
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 
 

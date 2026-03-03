@@ -61,7 +61,7 @@ from utils import get_basic_auth_headers
 
 logger = logging.getLogger(__name__)
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 

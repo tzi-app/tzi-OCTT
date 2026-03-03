@@ -41,7 +41,7 @@ from charge_point import TziChargePoint16
 from trigger import create_token
 from utils import get_basic_auth_headers
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EXPIRED_ID_TAG = os.environ['EXPIRED_ID_TOKEN']
 

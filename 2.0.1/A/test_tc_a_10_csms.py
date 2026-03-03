@@ -76,7 +76,7 @@ logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 

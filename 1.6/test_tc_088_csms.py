@@ -52,7 +52,7 @@ from websockets import InvalidStatusCode
 
 from utils import create_ssl_context, get_basic_auth_headers
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 

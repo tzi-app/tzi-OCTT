@@ -47,7 +47,7 @@ from reusable_states import booted, authorized, charging
 from trigger import trigger_v16
 from utils import get_basic_auth_headers
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
 CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))

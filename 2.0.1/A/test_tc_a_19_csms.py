@@ -107,13 +107,13 @@ from utils import (
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_A']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
-SECURITY_PROFILE_2_CP = os.environ['SECURITY_PROFILE_2_CP_A']
-SECURITY_PROFILE_3_CP = os.environ['SECURITY_PROFILE_3_CP_A']
+SECURITY_PROFILE_2_CP = os.environ['CP201_SP2']
+SECURITY_PROFILE_3_CP = os.environ['CP201_SP3']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
