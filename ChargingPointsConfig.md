@@ -1,18 +1,16 @@
-# Master Charging Points Configuration (OCPP 2.0.1)
+# Master Charging Points Configuration
 
 ## Overview
 
+This root document consolidates the configuration for both OCPP 2.0.1 (suites A–P) and OCPP 1.6J (75 tests), aligned with `pytest.ini` and `2.0.1/config.json`.
 
-
-This root document consolidates the suite-specific configuration files under `2.0.1/*/ChargingPointsConfig.md` and aligns them with the current repository defaults from `pytest.ini` and `2.0.1/config.json`.
-
-Use this file as the single reference when running all suites `A` through `P`.
+Use this file as the single reference when running the full test suite.
 
 ---
 
 ## Charging Point IDs Used by Tests
 
-### Security Profile 1 (WS + Basic Auth)
+### OCPP 2.0.1 — Security Profile 1 (WS + Basic Auth)
 
 | Variable | Default Value | Used By |
 |---|---|---|
@@ -25,12 +23,19 @@ Use this file as the single reference when running all suites `A` through `P`.
 | `BASIC_AUTH_CP_G` | `CP_G` | Suite G |
 | `BASIC_AUTH_CP` | `CP_1` | Suites H, I, J, K, L, M, N, O, P (and shared fallback in helpers) |
 
-### Security Profiles 2 and 3 (WSS)
+### OCPP 2.0.1 — Security Profiles 2 and 3 (WSS)
 
 | Variable | Default Value | Profile | Used By |
 |---|---|---|---|
 | `SECURITY_PROFILE_2_CP_A` | `CP_A_SP2` | 2 (TLS + Basic Auth) | Suite A |
 | `SECURITY_PROFILE_3_CP_A` | `CP_A_SP3` | 3 (mTLS) | Suite A |
+
+### OCPP 1.6J
+
+| Variable | Default Value | Profile | Used By |
+|---|---|---|---|
+| `CP16_SP1` | `CP16_SP1` | 1 (Basic Auth) | All 1.6J tests (WS) |
+| `CP16_SP3` | `CP16_SP3` | 3 (mTLS) | 1.6J TLS/certificate tests (WSS) |
 
 Notes:
 - `pytest.ini` still contains `SECURITY_PROFILE_2_CP` and `SECURITY_PROFILE_3_CP` for compatibility, but current suite A test files use the `_A` variants.
@@ -42,10 +47,11 @@ Notes:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `CSMS_ADDRESS` | `ws://localhost:9000` | WS endpoint for profile 1 tests |
-| `CSMS_WSS_ADDRESS` | `wss://localhost:8082` | WSS endpoint for profile 2/3 tests |
-| `BASIC_AUTH_CP_PASSWORD` | `0123456789123456` | Basic Auth password for SP1/SP2 charging points |
-| `NEW_BASIC_AUTH_PASSWORD` | `new_password_12345678` | Used by suite A password update flows |
+| `CSMS_ADDRESS` | `wss://localhost:9000` | WS/WSS endpoint (used by both 2.0.1 and 1.6J) |
+| `CSMS_WSS_ADDRESS` | `wss://localhost:8082` | WSS endpoint for profile 2/3 tests (2.0.1) |
+| `CSMS_TRIGGER_ADDRESS` | `http://localhost:5001` | HTTP trigger API for CSMS-initiated actions (1.6J) |
+| `BASIC_AUTH_CP_PASSWORD` | `test1234` | Basic Auth password for SP1/SP2 charging points |
+| `NEW_BASIC_AUTH_PASSWORD` | `new_password_12345678` | Used by suite A password update flows (2.0.1) |
 | `CSMS_ACTION_TIMEOUT` | `30` | Timeout waiting for CSMS-initiated actions |
 
 ---
@@ -55,7 +61,7 @@ Notes:
 | Variable | Default | Used By |
 |---|---|---|
 | `CONFIGURED_EVSE_ID` | `1` | B, C, E, F, G, H, I, J, K, L, N, O, P |
-| `CONFIGURED_CONNECTOR_ID` | `1` | All suites except A |
+| `CONFIGURED_CONNECTOR_ID` | `1` | All suites except A; also 1.6J |
 | `CONFIGURED_NUMBER_OF_EVSES` | `1` | H (`TC_H_14`) |
 | `CONFIGURED_CONNECTOR_TYPE` | `cType2` | H (`TC_H_15`) |
 | `CONFIGURED_NUMBER_PHASES` | `3` | K smart charging scenarios |
@@ -68,15 +74,15 @@ Notes:
 
 | Variable | Default | Used By |
 |---|---|---|
-| `VALID_ID_TOKEN` | `100000C01` | B, C, E, F, G, H, I, J, K, L, N |
-| `VALID_ID_TOKEN_TYPE` | `Central` | Same as above |
+| `VALID_ID_TOKEN` | `TAG-001` | B, C, E, F, G, H, I, J, K, L, N; 1.6J |
+| `VALID_ID_TOKEN_TYPE` | `ISO14443` | Same as above |
 | `VALID_ID_TOKEN_2` | `100000C39B` | C group-id/master-pass scenarios |
 | `VALID_ID_TOKEN_TYPE_2` | `Central` | C |
-| `INVALID_ID_TOKEN` | `100000C02` | C, E |
+| `INVALID_ID_TOKEN` | `100000C02` | C, E; 1.6J |
 | `INVALID_ID_TOKEN_TYPE` | `Cash` | C, E |
-| `BLOCKED_ID_TOKEN` | `100000C06` | C |
+| `BLOCKED_ID_TOKEN` | `100000C06` | C; 1.6J |
 | `BLOCKED_ID_TOKEN_TYPE` | `Central` | C |
-| `EXPIRED_ID_TOKEN` | `100000C07` | C |
+| `EXPIRED_ID_TOKEN` | `100000C07` | C; 1.6J |
 | `EXPIRED_ID_TOKEN_TYPE` | `Central` | C |
 
 ### Group / Master Pass
@@ -162,18 +168,28 @@ Notes:
 
 ---
 
-## CSMS Simulator Configuration Model
+## CSMS Configuration Model
+
+### OCPP 2.0.1
 
 `2.0.1/csms.py` loads configuration from `2.0.1/config.json` at startup.
 
-Implications:
 - The CSMS simulator itself should be configured through `2.0.1/config.json`.
 - The test harness (`pytest`) still uses environment variables from `pytest.ini` to parameterize simulated charging points and assertions.
 - Keep `pytest.ini` and `2.0.1/config.json` aligned for shared values (IDs, ports, token defaults, EVSE/connectors, and timeouts).
 
+### OCPP 1.6J
+
+1.6J tests connect directly to the CSMS WebSocket endpoint (`CSMS_ADDRESS`) and use the HTTP trigger API (`CSMS_TRIGGER_ADDRESS`) to invoke CSMS-initiated actions (e.g., RemoteStartTransaction, Reset, SetChargingProfile).
+
+- `1.6/trigger.py` provides helper functions: `trigger_v16()`, `set_basic_auth_password()`, and `create_token()`.
+- The CSMS must expose a REST API at `CSMS_TRIGGER_ADDRESS` for these triggers to work.
+
 ---
 
 ## Block-to-Configuration Summary
+
+### OCPP 2.0.1
 
 | Block | Primary CP Variables | Additional Required Configuration |
 |---|---|---|
@@ -194,9 +210,20 @@ Implications:
 | O | `BASIC_AUTH_CP` | display message flows and `VALID_IDTOKEN_*` |
 | P | `BASIC_AUTH_CP` | data transfer vendor/message identifiers |
 
+### OCPP 1.6J
+
+| Scope | Primary CP Variables | Additional Required Configuration |
+|---|---|---|
+| All 1.6J tests | `CP16_SP1` | `CSMS_ADDRESS`, `BASIC_AUTH_CP_PASSWORD`, `VALID_ID_TOKEN`, `CONFIGURED_CONNECTOR_ID` |
+| TLS/cert tests | `CP16_SP3` | `TLS_CA_CERT`, `TLS_CLIENT_CERT`, `TLS_CLIENT_KEY` |
+| Trigger-based tests | `CP16_SP1` | `CSMS_TRIGGER_ADDRESS` (HTTP API for CSMS-initiated actions) |
+| Auth status tests | `CP16_SP1` | `INVALID_ID_TOKEN`, `BLOCKED_ID_TOKEN`, `EXPIRED_ID_TOKEN` |
+
 ---
 
 ## Minimum Registration Checklist
+
+### OCPP 2.0.1
 
 For a clean full run of `2.0.1/A` through `2.0.1/P`, register:
 
@@ -205,4 +232,14 @@ For a clean full run of `2.0.1/A` through `2.0.1/P`, register:
 3. SP3 charging point for `CP_A_SP3`.
 4. Basic Auth password matching `BASIC_AUTH_CP_PASSWORD`.
 5. EVSE/connector topology matching `CONFIGURED_EVSE_ID` and `CONFIGURED_CONNECTOR_ID` (plus extra EVSE behavior required by specific C/H scenarios).
+
+### OCPP 1.6J
+
+For a clean full run of `1.6/`, register:
+
+1. SP1 charging point for `CP16_SP1`.
+2. SP3 charging point for `CP16_SP3` (for TLS/certificate tests).
+3. Basic Auth password matching `BASIC_AUTH_CP_PASSWORD`.
+4. CSMS HTTP trigger API running at `CSMS_TRIGGER_ADDRESS` (default `http://localhost:5001`).
+5. Valid, invalid, blocked, and expired ID tags configured in the CSMS.
 
