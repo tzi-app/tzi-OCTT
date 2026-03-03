@@ -62,12 +62,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import get_report
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
@@ -89,11 +90,21 @@ async def test_tc_b_18(connection):
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for first GetReportRequest (componentCriteria = Problem)
+    component_variable = [{
+        "component": {"name": "EVSE", "evse": {"id": CONFIGURED_EVSE_ID}},
+        "variable": {"name": "AvailabilityState"},
+    }]
+
+    # Step 1-2: Trigger GetReportRequest with componentCriteria = Problem
+    trigger_task = asyncio.create_task(
+        get_report(BASIC_AUTH_CP, ["Problem"], component_variable, request_id=1)
+    )
+
     await asyncio.wait_for(
         cp._received_get_report.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._get_report_data is not None
     report_data = cp._get_report_data
@@ -124,10 +135,15 @@ async def test_tc_b_18(connection):
     cp._received_get_report.clear()
     cp._get_report_response_status = GenericDeviceModelStatusEnumType.accepted
 
+    trigger_task2 = asyncio.create_task(
+        get_report(BASIC_AUTH_CP, ["Available"], component_variable, request_id=2)
+    )
+
     await asyncio.wait_for(
         cp._received_get_report.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task2
 
     report_data = cp._get_report_data
     logging.info(f"Second GetReportRequest received: {report_data}")

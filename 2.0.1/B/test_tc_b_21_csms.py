@@ -60,12 +60,13 @@ from ocpp.v201.enums import (
 from ocpp.v201.call import TransactionEvent
 
 from tzi_charge_point import TziChargePoint
+from trigger import reset
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
@@ -118,11 +119,14 @@ async def test_tc_b_21():
     )
     await cp.send_transaction_event_request(started_event)
 
-    # Wait for CSMS to send ResetRequest (OnIdle)
+    # Trigger CSMS to send ResetRequest with type OnIdle
+    trigger_task = asyncio.create_task(reset(BASIC_AUTH_CP, "OnIdle"))
+
     await asyncio.wait_for(
         cp._received_reset.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._reset_data is not None
     assert cp._reset_data['type'] == 'OnIdle', \

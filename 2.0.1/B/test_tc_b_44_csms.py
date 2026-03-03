@@ -38,12 +38,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import send_call
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -64,11 +65,26 @@ async def test_tc_b_44(connection):
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for CSMS to send SetNetworkProfileRequest
+    # Step 1-2: Trigger CSMS to send SetNetworkProfileRequest (CP will respond Failed)
+    trigger_task = asyncio.create_task(send_call(
+        BASIC_AUTH_CP, "SetNetworkProfile", {
+            "configurationSlot": 1,
+            "connectionData": {
+                "messageTimeout": 30,
+                "ocppCsmsUrl": "wss://example.com/ocpp",
+                "ocppInterface": "Wired0",
+                "ocppTransport": "JSON",
+                "ocppVersion": "OCPP20",
+                "securityProfile": 1,
+            },
+        },
+    ))
+
     await asyncio.wait_for(
         cp._received_set_network_profile.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._set_network_profile_data is not None
     logging.info(f"SetNetworkProfileRequest received: {cp._set_network_profile_data}")

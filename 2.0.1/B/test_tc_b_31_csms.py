@@ -47,12 +47,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_pending_boot, send_call
 from utils import get_basic_auth_headers, validate_schema
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -62,6 +63,9 @@ CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
                          indirect=True)
 async def test_tc_b_31(connection):
     """Cold Boot CS - Pending/Rejected - TriggerMessage: CSMS triggers BootNotification."""
+    # Set pending provisioning so CSMS responds with Pending on boot
+    await set_pending_boot(BASIC_AUTH_CP)
+
     cp = TziChargePoint(BASIC_AUTH_CP, connection)
     start_task = asyncio.create_task(cp.start())
 
@@ -74,11 +78,20 @@ async def test_tc_b_31(connection):
         RegistrationStatusEnumType.rejected,
     ), f"Expected Pending or Rejected, got: {boot_response.status}"
 
-    # Step 3-4: Wait for CSMS to send TriggerMessageRequest (BootNotification)
+    # Clear pending so second boot returns Accepted
+    await set_pending_boot(BASIC_AUTH_CP, pending=False)
+
+    # Step 3-4: Trigger CSMS to send TriggerMessageRequest (BootNotification)
+    trigger_task = asyncio.create_task(send_call(
+        BASIC_AUTH_CP, "TriggerMessage",
+        {"requestedMessage": "BootNotification"},
+    ))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
     assert cp._trigger_message_data == 'BootNotification', \
         f"Expected TriggerMessage for BootNotification, got: {cp._trigger_message_data}"
 

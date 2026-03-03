@@ -33,12 +33,13 @@ import logging
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
+from trigger import get_base_report
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -57,11 +58,17 @@ async def test_tc_b_13(connection):
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Wait for CSMS to send GetBaseReportRequest
+    # Trigger CSMS to send GetBaseReportRequest with FullInventory
+    trigger_task = asyncio.create_task(
+        get_base_report(BASIC_AUTH_CP, "FullInventory")
+    )
+
+    # Wait for the CS to receive the GetBaseReportRequest
     await asyncio.wait_for(
         cp._received_get_base_report.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     # Validate the GetBaseReportRequest content
     assert cp._get_base_report_data is not None

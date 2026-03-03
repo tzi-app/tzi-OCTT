@@ -48,12 +48,13 @@ import logging
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
+from trigger import get_variables
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -76,11 +77,18 @@ async def test_tc_b_07(connection):
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Wait for CSMS to send GetVariablesRequest
+    # Trigger CSMS to send GetVariablesRequest for two variables
+    trigger_task = asyncio.create_task(get_variables(BASIC_AUTH_CP, [
+        {"component": {"name": "OCPPCommCtrlr"}, "variable": {"name": "OfflineThreshold"}},
+        {"component": {"name": "AuthCtrlr"}, "variable": {"name": "AuthorizeRemoteStart"}},
+    ]))
+
+    # Wait for the CS to receive the GetVariablesRequest
     await asyncio.wait_for(
         cp._received_get_variables.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     # Validate the GetVariablesRequest content
     assert cp._get_variables_data is not None

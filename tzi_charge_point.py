@@ -1,7 +1,9 @@
 import asyncio
 import dataclasses
+import json
 from typing import List
 import logging
+import sys
 
 from ocpp.routing import on
 from ocpp.v201 import call, call_result
@@ -41,6 +43,20 @@ from ocpp.v201.enums import (
 )
 
 from utils import now_iso
+
+_MSG_TYPE_NAMES = {2: 'CALL', 3: 'CALL_RESULT', 4: 'CALL_ERROR'}
+_LOG_MESSAGES = '--log-messages' in sys.argv
+
+# Dedicated logger for OCPP message tracing — writes directly to /dev/tty
+# so pytest's fd-level capture never swallows the messages.
+if _LOG_MESSAGES:
+    _tty = open('/dev/tty', 'w')
+    _msg_logger = logging.getLogger('ocpp.messages')
+    _msg_logger.propagate = False
+    _msg_handler = logging.StreamHandler(_tty)
+    _msg_handler.setFormatter(logging.Formatter('%(message)s'))
+    _msg_logger.addHandler(_msg_handler)
+    _msg_logger.setLevel(logging.DEBUG)
 
 
 class AttributeDict(dict):
@@ -211,6 +227,46 @@ class TziChargePoint(ChargePoint):
             skip_schema_validation=skip_schema_validation,
         )
         return _wrap_dicts(response)
+
+    def _format_ocpp_message(self, direction, raw_msg):
+        """Format an OCPP message for logging."""
+        try:
+            msg = json.loads(raw_msg)
+        except (json.JSONDecodeError, TypeError):
+            return f"{direction} {raw_msg}"
+
+        msg_type_id = msg[0]
+        msg_type = _MSG_TYPE_NAMES.get(msg_type_id, f'UNKNOWN({msg_type_id})')
+        unique_id = msg[1]
+
+        if msg_type_id == 2:  # CALL
+            action = msg[2]
+            payload = msg[3]
+            header = f"{direction} [{msg_type}] {action} (id={unique_id})"
+        elif msg_type_id == 3:  # CALL_RESULT
+            payload = msg[2]
+            header = f"{direction} [{msg_type}] (id={unique_id})"
+        elif msg_type_id == 4:  # CALL_ERROR
+            error_code = msg[2]
+            error_desc = msg[3]
+            payload = msg[4] if len(msg) > 4 else {}
+            header = f"{direction} [{msg_type}] {error_code}: {error_desc} (id={unique_id})"
+        else:
+            header = f"{direction} [{msg_type}] (id={unique_id})"
+            payload = msg[2:]
+
+        formatted_payload = json.dumps(payload, indent=2)
+        return f"{header}\n{formatted_payload}"
+
+    async def _send(self, message):
+        if _LOG_MESSAGES:
+            _msg_logger.info(self._format_ocpp_message("\nCP  >>>", message))
+        await self._connection.send(message)
+
+    async def route_message(self, raw_msg):
+        if _LOG_MESSAGES:
+            _msg_logger.info(self._format_ocpp_message("\nCSMS >>>", raw_msg))
+        await super().route_message(raw_msg)
 
     async def start(self):
         try:

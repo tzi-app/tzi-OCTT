@@ -40,12 +40,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import reset
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
@@ -66,11 +67,16 @@ async def test_tc_b_25(connection):
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for CSMS to send ResetRequest with evseId
+    # Step 1-2: Trigger CSMS to send ResetRequest with type OnIdle for specific EVSE
+    trigger_task = asyncio.create_task(
+        reset(BASIC_AUTH_CP, "OnIdle", evse_id=CONFIGURED_EVSE_ID)
+    )
+
     await asyncio.wait_for(
         cp._received_reset.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._reset_data is not None
     assert cp._reset_data['type'] == 'OnIdle', \

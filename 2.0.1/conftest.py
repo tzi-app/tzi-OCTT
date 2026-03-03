@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+import pytest
 import pytest_asyncio
 import websockets
 from websockets import InvalidStatusCode
@@ -18,6 +19,15 @@ for _path in (str(_VERSION_ROOT), str(_PROJECT_ROOT)):
 from utils import build_default_ssl_context
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        '--log-messages',
+        action='store_true',
+        default=False,
+        help='Log all incoming/outgoing OCPP messages during tests',
+    )
 
 
 @dataclass

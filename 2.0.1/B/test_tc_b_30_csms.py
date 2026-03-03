@@ -47,12 +47,13 @@ from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 from ocpp.exceptions import OCPPError
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_pending_boot
 from utils import get_basic_auth_headers, validate_schema
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 
@@ -62,6 +63,9 @@ BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 async def test_tc_b_30(connection):
     """Cold Boot CS - Pending/Rejected - SecurityError: CSMS rejects unauthorized messages."""
     assert connection.open
+
+    # Set pending provisioning so CSMS responds with Pending on boot
+    await set_pending_boot(BASIC_AUTH_CP)
 
     cp = TziChargePoint(BASIC_AUTH_CP, connection)
     start_task = asyncio.create_task(cp.start())

@@ -50,12 +50,13 @@ import logging
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_items_per_message, get_variables
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -88,6 +89,18 @@ async def test_tc_b_08(connection):
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
+
+    # Set ItemsPerMessageGetVariables limit to 4
+    await set_items_per_message(BASIC_AUTH_CP, get_variables=MAX_ITEMS_PER_MESSAGE)
+
+    # Trigger CSMS to send GetVariablesRequest for 5 variables (should split into 4 + 1)
+    trigger_task = asyncio.create_task(get_variables(BASIC_AUTH_CP, [
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "ItemsPerMessage", "instance": "GetReport"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "ItemsPerMessage", "instance": "GetVariables"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "BytesPerMessage", "instance": "GetReport"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "BytesPerMessage", "instance": "GetVariables"}},
+        {"component": {"name": "AuthCtrlr"}, "variable": {"name": "AuthorizeRemoteStart"}},
+    ]))
 
     # Wait for first GetVariablesRequest
     await asyncio.wait_for(
@@ -133,4 +146,5 @@ async def test_tc_b_08(connection):
 
     logging.info(f"Validated GetVariablesRequest split sizes {batch_sizes} and variables {sorted(EXPECTED_VARIABLES)}")
 
+    await trigger_task
     start_task.cancel()
