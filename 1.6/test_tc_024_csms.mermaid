@@ -8,13 +8,13 @@ sequenceDiagram
     Note over CP,CS: Reusable State: Authorized
 
     CP->>CS: 1. StatusNotification.req
-    Note right of CP: status = Preparing<br/>errorCode = NoError<br/>(Tool validates: status = Preparing)
+    Note right of CP: (Tool validates: status = Preparing)
 
     CS-->>CP: 2. StatusNotification.conf
 
-    Note over CP: EV driver plugs in the cable
+    Note over CP: [EV driver plugs in the cable.]
 
     CP->>CS: 3. StatusNotification.req
-    Note right of CP: errorCode = ConnectorLockFailure<br/>status = Faulted<br/>(Tool validates: errorCode + status)
+    Note right of CP: (Tool validates:<br/>errorCode = ConnectorLockFailure<br/>status = Faulted)
 
     CS-->>CP: 4. StatusNotification.conf

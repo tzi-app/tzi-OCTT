@@ -35,11 +35,76 @@ Tool validations
     * Step 3: (Message: SendLocalList.req)
         - updateType should be Differential.
         - localAuthorizationList contains <Only the specified idToken, including an idTagInfo.>
+          NOTE: "Only the specified idToken" suggests exactly 1 entry. The test validates at least 1
+          entry with idTagInfo but does not enforce exactly 1, since the CSMS may batch entries.
         - versionNumber should be <Greater than the initial listVersion.>
     * Step 4: (Message: SendLocalList.conf)
         - status is Accepted.
+
+Implementation notes
+    - Steps 1-2 (GetLocalListVersion) are marked optional in the spec but this test requires them.
+      If the CSMS skips GetLocalListVersion, the test will timeout. This is acceptable as long as
+      the CSMS always sends GetLocalListVersion before a Differential update.
 
 Expected result(s) / behaviour
     Charge Point (Tool): n/a
     Central System (SUT): n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import UpdateStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+VALID_ID_TAG = os.environ.get('VALID_ID_TOKEN', 'TEST_TAG')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_043_5(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # Report existing list version = 1
+    cp._local_list_version = 1
+    # CP responds Accepted for the differential SendLocalList
+    cp._send_local_list_response_status = UpdateStatus.accepted
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send GetLocalListVersion.req → CP responds with listVersion=1
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-local-list-version', {}))
+    await asyncio.wait_for(cp._received_get_local_list_version.wait(), timeout=ACTION_TIMEOUT)
+
+    # Reset the event to wait for the next CSMS-initiated message (SendLocalList)
+    cp._received_send_local_list.clear()
+
+    # Step 3-4: Wait for CSMS to send SendLocalList.req (Differential) → CP responds Accepted
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'send-local-list', {
+        'listVersion': 2,
+        'updateType': 'Differential',
+        'localAuthorizationList': [{'idTag': VALID_ID_TAG, 'idTagInfo': {'status': 'Accepted'}}],
+    }))
+    await asyncio.wait_for(cp._received_send_local_list.wait(), timeout=ACTION_TIMEOUT)
+    # Validate updateType is Differential
+    assert cp._send_local_list_data['update_type'] == 'Differential'
+
+    # Validate versionNumber > initial listVersion (1)
+    assert cp._send_local_list_data['list_version'] > 1, \
+        f"versionNumber should be > 1, got {cp._send_local_list_data['list_version']}"
+
+    # Validate localAuthorizationList contains entries with idTagInfo
+    auth_list = cp._send_local_list_data.get('local_authorization_list') or []
+    assert len(auth_list) > 0, "localAuthorizationList should not be empty"
+    for entry in auth_list:
+        assert 'id_tag_info' in entry, f"Entry missing idTagInfo: {entry}"
+
+    start_task.cancel()

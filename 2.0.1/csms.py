@@ -69,6 +69,7 @@ Actions fire only once per CP (except profile_upgrade which uses a state machine
 import asyncio
 import json
 import logging
+import re
 import sys
 import websockets
 import ssl
@@ -281,6 +282,7 @@ CONFIGURED_CHARGING_RATE_UNIT = (_cfg_str('CONFIGURED_CHARGING_RATE_UNIT') or 'A
 TRANSACTION_DURATION = _cfg_int('TRANSACTION_DURATION')
 COST_PER_KWH = _cfg_float('COST_PER_KWH')
 LOCAL_LIST_VERSION = _cfg_int('LOCAL_LIST_VERSION')
+TRIGGER_PORT = _cfg_int('CSMS_TRIGGER_PORT') if 'CSMS_TRIGGER_PORT' in CONFIG else 5001
 
 # ─── Token Database ──────────────────────────────────────────────────────────
 
@@ -324,6 +326,9 @@ if _revoked_file and os.path.exists(_revoked_file):
 
 cp_passwords = {}                # cp_id -> current password
 cp_min_security_profile = {}     # cp_id -> minimum required security profile
+# Pre-populate SP3 stations so the WSS handler knows to accept them without Basic Auth
+for _sp3_id in CONFIG.get('CSMS_SP3_STATION_IDS', []):
+    cp_min_security_profile[_sp3_id] = 3
 cp_test_state = {}               # cp_id -> test flow state (profile_upgrade)
 cp_action_fired = {}             # cp_id -> set of action types already executed
 
@@ -504,6 +509,7 @@ _k_last_reported_profile_id = {}  # cp_id -> last charging profile id from Repor
 _k_exclusive_mode = set()       # cp_id -> K confirmed, suppress H-mode interference
 _k_post_h_reset_done = set()    # cp_id -> K sequence reset once after H suite completion
 _active_cp_instance = {}        # cp_id -> currently active ChargePointHandler instance
+_trigger_session_active = set() # CP IDs controlled via HTTP trigger API (skip auto-detect)
 
 _SP1_K_PROVISIONING = [
     'set_tx_default_specific',        # K_01
@@ -1499,9 +1505,21 @@ class ChargePointHandler(ChargePoint):
         logging.info(f"BootNotification from {self.id}: reason={reason}")
         self._boot_received.set()
 
+        # Trigger-controlled pending boot: respond Pending when set via HTTP API
+        if cp_test_state.get(self.id) == 'pending_boot':
+            self._boot_status = 'Pending'
+            logging.info(f"Trigger-controlled pending boot for {self.id}: Pending")
+            return call_result.BootNotification(
+                current_time=now_iso(),
+                interval=1,
+                status=RegistrationStatusEnumType.pending,
+            )
+
         # Determine boot response from SP1 provisioning sequence
         # (only when auto-detect no-boot actions have NOT been used,
-        # i.e., this is a provisioning-focused session like B tests)
+        # i.e., this is a provisioning-focused session like B tests).
+        # SP1 provisioning only applies to WS (non-TLS) connections.
+        # WSS connections rely on trigger API for test actions.
         if self._security_profile == 1 and self.id not in _auto_detect_used:
             # Post-provisioning mode: always Accepted, action triggered by silence
             if self.id in _post_prov_mode_active:
@@ -4041,6 +4059,11 @@ async def auto_detect_and_execute(cp, security_profile):
     - C-session: reactive connections (CP sends non-boot messages) appear
       first, then "waiting" connections need C-specific actions (clear_cache)
     """
+    # Skip if this CP is being controlled via the HTTP trigger API
+    if cp.id in _trigger_session_active:
+        logging.info(f"Auto-detect: skipping for {cp.id} (trigger-controlled)")
+        return
+
     # Wait to see if CP sends any message
     try:
         await asyncio.wait_for(cp._any_message_received.wait(), timeout=1.5)
@@ -4437,6 +4460,7 @@ async def on_connect_ws(websocket, path):
         logging.info(f'WS: {cp_id} disconnected')
     finally:
         _rollback_k_index_on_disconnect(cp)
+        _trigger_session_active.discard(cp_id)
         if _active_cp_instance.get(cp_id) is cp:
             del _active_cp_instance[cp_id]
 
@@ -4449,6 +4473,19 @@ async def wss_process_request(path, request_headers):
     SP3: No auth header (client cert validated at TLS level).
     """
     cp_id = path.strip('/')
+
+    # Reject unsupported WebSocket subprotocol at HTTP level
+    requested_protocols = request_headers.get('Sec-WebSocket-Protocol', '')
+    if requested_protocols:
+        protos = [p.strip() for p in requested_protocols.split(',')]
+        if 'ocpp2.0.1' not in protos:
+            logging.warning(f"WSS: Unsupported subprotocol(s) from {cp_id}: {protos}")
+            return (
+                http.HTTPStatus.BAD_REQUEST,
+                [],
+                b'Unsupported WebSocket subprotocol\n',
+            )
+
     min_sp = cp_min_security_profile.get(cp_id, 1)
 
     auth_header = request_headers.get('Authorization')
@@ -4472,6 +4509,10 @@ async def wss_process_request(path, request_headers):
             return _unauthorized_response()
     else:
         # SP3 path: mTLS (client cert verified at TLS handshake level)
+        # Only accept no-auth if the CP is known to be SP3
+        if min_sp < 3:
+            logging.warning(f"WSS: {cp_id} has no auth header and min_sp={min_sp}, rejecting (SP3 requires min_sp>=3)")
+            return _unauthorized_response()
         logging.info(f"WSS: No auth header for {cp_id} - SP3 (mTLS)")
         return None
 
@@ -4501,6 +4542,7 @@ async def on_connect_wss(websocket, path):
         logging.info(f'WSS: {cp_id} disconnected (SP{security_profile})')
     finally:
         _rollback_k_index_on_disconnect(cp)
+        _trigger_session_active.discard(cp_id)
         if _active_cp_instance.get(cp_id) is cp:
             del _active_cp_instance[cp_id]
 
@@ -4553,6 +4595,346 @@ def create_server_ssl_context():
     return ctx
 
 
+# ─── HTTP Trigger API Server ──────────────────────────────────────────────────
+# Lightweight TCP-based HTTP server for test triggers (no extra dependencies).
+# Tests POST to these endpoints to make the CSMS send OCPP messages to CPs.
+
+def _camel_to_snake(name):
+    """Convert camelCase to snake_case for the ocpp library."""
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+
+
+def _convert_keys_to_snake(obj):
+    """Recursively convert dict keys from camelCase to snake_case."""
+    if isinstance(obj, dict):
+        return {_camel_to_snake(k): _convert_keys_to_snake(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_keys_to_snake(item) for item in obj]
+    return obj
+
+
+def _trigger_respond(writer, status_code, body_dict):
+    """Send an HTTP JSON response and close the connection."""
+    body = json.dumps(body_dict).encode()
+    header = (
+        f"HTTP/1.1 {status_code} OK\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Connection: close\r\n"
+        f"\r\n"
+    ).encode()
+    writer.write(header + body)
+
+
+async def _handle_trigger_http(reader, writer):
+    """Handle a single HTTP request on the trigger API port."""
+    try:
+        # Read request line
+        request_line = await asyncio.wait_for(reader.readline(), timeout=5)
+        if not request_line:
+            return
+        parts = request_line.decode().strip().split(' ')
+        if len(parts) < 2:
+            _trigger_respond(writer, 400, {'error': 'Bad request'})
+            return
+        method, path = parts[0], parts[1]
+
+        # Read headers
+        content_length = 0
+        while True:
+            line = await asyncio.wait_for(reader.readline(), timeout=5)
+            if line in (b'\r\n', b'\n', b''):
+                break
+            if line.lower().startswith(b'content-length:'):
+                content_length = int(line.split(b':')[1].strip())
+
+        # Read body
+        body = {}
+        if content_length > 0:
+            raw = await asyncio.wait_for(reader.readexactly(content_length), timeout=5)
+            body = json.loads(raw.decode())
+
+        # Route
+        result = await _route_trigger(method, path, body)
+        _trigger_respond(writer, result.get('status', 200), result.get('body', {}))
+    except Exception as e:
+        logging.error(f"Trigger API error: {e}")
+        try:
+            _trigger_respond(writer, 500, {'error': str(e)})
+        except Exception:
+            pass
+    finally:
+        try:
+            await writer.drain()
+            writer.close()
+        except Exception:
+            pass
+
+
+async def _route_trigger(method, path, body):
+    """Route an HTTP trigger request to the appropriate handler."""
+    if method != 'POST':
+        return {'status': 405, 'body': {'error': 'Method not allowed'}}
+
+    # Global endpoint: /api/octt/set-basic-auth-password
+    if path == '/api/octt/set-basic-auth-password':
+        return await _trigger_set_basic_auth_password(body)
+
+    # Version-scoped endpoints: /api/octt/2.0.1/{station_id}/{action}
+    prefix = '/api/octt/2.0.1/'
+    if not path.startswith(prefix):
+        return {'status': 404, 'body': {'error': f'Unknown path: {path}'}}
+
+    remainder = path[len(prefix):]
+    parts = remainder.split('/', 1)
+    if len(parts) < 2:
+        return {'status': 400, 'body': {'error': 'Missing action in path'}}
+
+    station_id = parts[0]
+    action_path = parts[1]
+
+    # Mark CP as trigger-controlled (suppress auto-detect)
+    _trigger_session_active.add(station_id)
+
+    # Route by action
+    if action_path == 'update-basic-auth-password':
+        return await _trigger_update_basic_auth_password(station_id, body)
+    elif action_path == 'trigger-message':
+        return await _trigger_send_trigger_message(station_id, body)
+    elif action_path.startswith('call/'):
+        action_name = action_path[5:]  # strip 'call/'
+        return await _trigger_send_call(station_id, action_name, body)
+    elif action_path == 'set-security-profile':
+        return await _trigger_set_security_profile(station_id, body)
+    elif action_path == 'set-pending-boot':
+        return await _trigger_set_pending_boot(station_id, body)
+    elif action_path == 'set-items-per-message':
+        return await _trigger_set_items_per_message(station_id, body)
+    elif action_path == 'get-variables':
+        return await _trigger_get_variables(station_id, body)
+    elif action_path == 'set-variables':
+        return await _trigger_set_variables(station_id, body)
+    else:
+        return {'status': 404, 'body': {'error': f'Unknown action: {action_path}'}}
+
+
+def _find_cp(station_id):
+    """Look up the active ChargePointHandler instance for a station."""
+    cp = _active_cp_instance.get(station_id)
+    if cp is None:
+        raise ValueError(f"No active connection for station {station_id}")
+    return cp
+
+
+async def _trigger_update_basic_auth_password(station_id, body):
+    """Handle update-basic-auth-password: send SetVariables(BasicAuthPassword)."""
+    cp = _find_cp(station_id)
+    new_password = NEW_BASIC_AUTH_PASSWORD
+    # Pre-set so reconnection works even if cp.call() doesn't complete
+    cp_passwords[station_id] = new_password
+    logging.info(f"Trigger: Sending SetVariablesRequest(BasicAuthPassword) to {station_id}")
+
+    try:
+        response = await asyncio.wait_for(
+            cp.call(call.SetVariables(
+                set_variable_data=[{
+                    'component': {'name': 'SecurityCtrlr'},
+                    'variable': {'name': 'BasicAuthPassword'},
+                    'attribute_value': new_password,
+                }]
+            )),
+            timeout=10,
+        )
+        result_list = []
+        if response.set_variable_result:
+            for r in response.set_variable_result:
+                status = r.get('attribute_status', '') if isinstance(r, dict) \
+                    else str(getattr(r, 'attribute_status', ''))
+                result_list.append({'status': str(status)})
+                if 'accepted' in str(status).lower():
+                    logging.info(f"Trigger: Password updated for {station_id}")
+        return {'status': 200, 'body': {'result': result_list}}
+    except (asyncio.TimeoutError, Exception) as e:
+        logging.warning(f"Trigger: Password update did not complete for {station_id}: {e}")
+        return {'status': 200, 'body': {'result': 'timeout', 'message': str(e)}}
+
+
+async def _trigger_send_trigger_message(station_id, body):
+    """Handle trigger-message: send TriggerMessageRequest."""
+    cp = _find_cp(station_id)
+    requested_message = body.get('requestedMessage', '')
+    logging.info(f"Trigger: Sending TriggerMessageRequest({requested_message}) to {station_id}")
+
+    try:
+        response = await asyncio.wait_for(
+            cp.call(call.TriggerMessage(requested_message=requested_message)),
+            timeout=10,
+        )
+        logging.info(f"Trigger: TriggerMessageResponse from {station_id}: {response}")
+        return {'status': 200, 'body': {'status': str(getattr(response, 'status', response))}}
+    except (asyncio.TimeoutError, Exception) as e:
+        logging.warning(f"Trigger: TriggerMessage did not complete for {station_id}: {e}")
+        return {'status': 200, 'body': {'result': 'timeout', 'message': str(e)}}
+
+
+async def _trigger_send_call(station_id, action_name, body):
+    """Handle call/{action}: send an arbitrary OCPP CALL message."""
+    cp = _find_cp(station_id)
+    # Convert camelCase body keys to snake_case for the ocpp library
+    snake_body = _convert_keys_to_snake(body)
+    logging.info(f"Trigger: Sending {action_name} to {station_id} with {snake_body}")
+
+    # Look up the call class dynamically
+    call_cls = getattr(call, action_name, None)
+    if call_cls is None:
+        return {'status': 400, 'body': {'error': f'Unknown OCPP action: {action_name}'}}
+
+    try:
+        response = await asyncio.wait_for(
+            cp.call(call_cls(**snake_body)),
+            timeout=10,
+        )
+        # Convert response to a serializable dict
+        resp_data = {}
+        if hasattr(response, '__dataclass_fields__'):
+            for field_name in response.__dataclass_fields__:
+                resp_data[field_name] = getattr(response, field_name)
+        else:
+            resp_data = {'response': str(response)}
+        logging.info(f"Trigger: {action_name} response from {station_id}: {resp_data}")
+        return {'status': 200, 'body': resp_data}
+    except (asyncio.TimeoutError, Exception) as e:
+        logging.warning(f"Trigger: {action_name} did not complete for {station_id}: {e}")
+        return {'status': 200, 'body': {'result': 'timeout', 'message': str(e)}}
+
+
+async def _trigger_set_security_profile(station_id, body):
+    """Handle set-security-profile: update cp_min_security_profile."""
+    sp = body.get('security_profile')
+    if sp is None:
+        return {'status': 400, 'body': {'error': 'Missing security_profile'}}
+    cp_min_security_profile[station_id] = int(sp)
+    logging.info(f"Trigger: Set security profile for {station_id} to {sp}")
+    return {'status': 200, 'body': {'ok': True}}
+
+
+async def _trigger_set_basic_auth_password(body):
+    """Handle set-basic-auth-password: update cp_passwords directly."""
+    station_id = body.get('station_id')
+    password = body.get('password')
+    if not station_id or password is None:
+        return {'status': 400, 'body': {'error': 'Missing station_id or password'}}
+    cp_passwords[station_id] = password
+    logging.info(f"Trigger: Set basic auth password for {station_id}")
+    return {'status': 200, 'body': {'ok': True}}
+
+
+async def _trigger_set_pending_boot(station_id, body):
+    """Handle set-pending-boot: flag provisioning state."""
+    pending = body.get('pending', True)
+    # Store pending state for the station
+    if pending:
+        cp_test_state[station_id] = 'pending_boot'
+        logging.info(f"Trigger: Set pending boot for {station_id}")
+    else:
+        cp_test_state.pop(station_id, None)
+        logging.info(f"Trigger: Cleared pending boot for {station_id}")
+    return {'status': 200, 'body': {'ok': True}}
+
+
+async def _trigger_set_items_per_message(station_id, body):
+    """Handle set-items-per-message: store ItemsPerMessage limits."""
+    # Store limits for the station (used by get-variables/set-variables handlers)
+    key = f'{station_id}_items_per_message'
+    cp_test_state[key] = body
+    logging.info(f"Trigger: Set items per message for {station_id}: {body}")
+    return {'status': 200, 'body': {'ok': True}}
+
+
+async def _trigger_get_variables(station_id, body):
+    """Handle get-variables: send batched GetVariablesRequest(s)."""
+    cp = _find_cp(station_id)
+    get_variable_data = body.get('getVariableData', [])
+    snake_data = _convert_keys_to_snake(get_variable_data)
+    logging.info(f"Trigger: Sending GetVariablesRequest to {station_id} ({len(snake_data)} items)")
+
+    # Check for items-per-message limit
+    limit_key = f'{station_id}_items_per_message'
+    limits = cp_test_state.get(limit_key, {})
+    items_limit = limits.get('get_variables', 0)
+
+    all_results = []
+    if items_limit and items_limit > 0:
+        # Split into batches
+        for i in range(0, len(snake_data), items_limit):
+            batch = snake_data[i:i + items_limit]
+            try:
+                response = await asyncio.wait_for(
+                    cp.call(call.GetVariables(get_variable_data=batch)),
+                    timeout=10,
+                )
+                if hasattr(response, 'get_variable_result'):
+                    for r in response.get_variable_result:
+                        all_results.append(r if isinstance(r, dict) else str(r))
+            except (asyncio.TimeoutError, Exception) as e:
+                logging.warning(f"Trigger: GetVariables batch failed for {station_id}: {e}")
+    else:
+        try:
+            response = await asyncio.wait_for(
+                cp.call(call.GetVariables(get_variable_data=snake_data)),
+                timeout=10,
+            )
+            if hasattr(response, 'get_variable_result'):
+                for r in response.get_variable_result:
+                    all_results.append(r if isinstance(r, dict) else str(r))
+        except (asyncio.TimeoutError, Exception) as e:
+            logging.warning(f"Trigger: GetVariables failed for {station_id}: {e}")
+
+    return {'status': 200, 'body': {'getVariableResult': all_results}}
+
+
+async def _trigger_set_variables(station_id, body):
+    """Handle set-variables: send batched SetVariablesRequest(s)."""
+    cp = _find_cp(station_id)
+    set_variable_data = body.get('setVariableData', [])
+    snake_data = _convert_keys_to_snake(set_variable_data)
+    logging.info(f"Trigger: Sending SetVariablesRequest to {station_id} ({len(snake_data)} items)")
+
+    # Check for items-per-message limit
+    limit_key = f'{station_id}_items_per_message'
+    limits = cp_test_state.get(limit_key, {})
+    items_limit = limits.get('set_variables', 0)
+
+    all_results = []
+    if items_limit and items_limit > 0:
+        for i in range(0, len(snake_data), items_limit):
+            batch = snake_data[i:i + items_limit]
+            try:
+                response = await asyncio.wait_for(
+                    cp.call(call.SetVariables(set_variable_data=batch)),
+                    timeout=10,
+                )
+                if hasattr(response, 'set_variable_result'):
+                    for r in response.set_variable_result:
+                        all_results.append(r if isinstance(r, dict) else str(r))
+            except (asyncio.TimeoutError, Exception) as e:
+                logging.warning(f"Trigger: SetVariables batch failed for {station_id}: {e}")
+    else:
+        try:
+            response = await asyncio.wait_for(
+                cp.call(call.SetVariables(set_variable_data=snake_data)),
+                timeout=10,
+            )
+            if hasattr(response, 'set_variable_result'):
+                for r in response.set_variable_result:
+                    all_results.append(r if isinstance(r, dict) else str(r))
+        except (asyncio.TimeoutError, Exception) as e:
+            logging.warning(f"Trigger: SetVariables failed for {station_id}: {e}")
+
+    return {'status': 200, 'body': {'setVariableResult': all_results}}
+
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 async def main():
@@ -4587,6 +4969,11 @@ async def main():
         logging.warning("TLS cert files not found - WSS server not started. "
                         "Run: python generate_certs.py")
 
+    # Start HTTP trigger API server
+    trigger_server = await asyncio.start_server(
+        _handle_trigger_http, '0.0.0.0', TRIGGER_PORT)
+    logging.info(f"Trigger API server started on port {TRIGGER_PORT}")
+
     if CP_ACTIONS:
         logging.info(f"Per-CP test actions: {CP_ACTIONS}")
     elif TEST_MODE:
@@ -4600,7 +4987,7 @@ async def main():
     logging.info("It is not intended for production or general-purpose use.")
     logging.info("")
 
-    tasks = [ws_server.wait_closed()]
+    tasks = [ws_server.wait_closed(), trigger_server.serve_forever()]
     if wss_server:
         tasks.append(wss_server.wait_closed())
     await asyncio.gather(*tasks)

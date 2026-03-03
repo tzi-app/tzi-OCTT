@@ -5,13 +5,16 @@ Use case Id(s)      B01
 Requirement(s)      B01.FR.02
 
 Requirement Details:
-    B01.FR.02: The CSMS has received BootNotificationRequest from the Charging Station. The CSMS SHALL respond to indicate whether it will accept the Charging Station.
-        Precondition: B01.FR.01 The CSMS has received BootNotificationRequest from the Charging Station.
+    B01.FR.02: The CSMS has received BootNotificationRequest from the Charging Station.
+               The CSMS SHALL respond to indicate whether it will accept the Charging Station.
+               Precondition: B01.FR.01 The CSMS has received BootNotificationRequest from the Charging Station.
+
 System under test   CSMS
 
 Description         The booting mechanism allows a Charging Station to provide some general information about the
                     Charging Station to the CSMS on startup AND it allows the Charging Station to request whether
                     it is allowed to start sending other OCPP messages.
+
 Purpose             To verify whether the CSMS is able to accept the communications of a registered Charging Station.
 
 Prerequisite(s)     N/a
@@ -41,7 +44,7 @@ from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, validate_schema
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 

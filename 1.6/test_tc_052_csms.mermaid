@@ -10,7 +10,7 @@ sequenceDiagram
     Note over CP: [Manual Action: Reserve a connector on the Charge Point]
 
     CS->>CP: 1. ReserveNow.req
-    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: <future timestamp>
+    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: <future timestamp><br/>(params from TC_051, not listed in TC_052)
 
     CP-->>CS: 2. ReserveNow.conf (status: Accepted)
     Note over CP: Validation: status must be Accepted

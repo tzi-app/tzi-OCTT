@@ -2,7 +2,8 @@
 Test case name      Firmware Update - Installation Failed
 Test case Id        TC_044_3_CSMS
 Feature profile     FirmwareManagement
-Reference           CompliancyTestTool-TestCaseDocument, Section 3.15.3, Table 163, Page 140
+Reference           CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf,
+                    Section 3.15.3, Table 163, Page 140 (PDF physical page 37)
 
 Description         The firmware of a Charge Point is being updated, but the installation fails.
 Purpose             Check whether Central System can handle messages for an update of the firmware of a Charge Point in
@@ -17,29 +18,22 @@ Before
 
 Test Scenario
     1.  The Central System sends a UpdateFirmware.req
-        - location: <Firmware Download URL from test data>
-        NOTE: 'location' field is not explicitly listed in the CSMS test scenario;
-              inferred from context. Test data source for firmware URL is unspecified (to be fixed later).
     2.  The Charge Point responds with a UpdateFirmware.conf
 
     [The Charge Point starts downloading the firmware]
     3.  The Charge Point sends a FirmwareStatusNotification.req
-        - status: Downloading
     4.  The Central System responds with a FirmwareStatusNotification.conf
 
     [The Charge Point has finished downloading the firmware]
     5.  The Charge Point sends a FirmwareStatusNotification.req
-        - status: Downloaded
     6.  The Central System responds with a FirmwareStatusNotification.conf
 
     [The Charge Point reports the status of all connectors]
     7.  The Charge Point sends a StatusNotification.req
-        - status: Unavailable
     8.  The Central System responds with a StatusNotification.conf
 
     [The Charge Point starts installing the firmware]
     9.  The Charge Point sends a FirmwareStatusNotification.req
-        - status: Installing
     10. The Central System responds with a FirmwareStatusNotification.conf
 
     11. The Charge Point reboots and sends a BootNotification.req
@@ -47,11 +41,9 @@ Test Scenario
 
     [The Charge Point reports the status of all connectors]
     13. The Charge Point sends a StatusNotification.req
-        - status: Available
     14. The Central System responds with a StatusNotification.conf
 
     15. The Charge Point sends a FirmwareStatusNotification.req
-        - status: InstallationFailed
     16. The Central System responds with a FirmwareStatusNotification.conf
 
 Tool validations
@@ -83,4 +75,70 @@ Tool validations
     Central System (SUT): n/a
 
 Expected result(s) / behaviour: n/a
+
+Notes:
+    - Steps 7-8 and 13-14 say "reports the status of all connectors" but show only a single
+      StatusNotification.req/conf pair. Implementation sends one per connector (0 + CONNECTOR_ID).
+    - Step 12: Docstring does not specify the expected BootNotification.conf status.
+      Implementation asserts Accepted (implied by continued normal operation).
 """
+
+import asyncio
+import os
+from datetime import datetime
+import pytest
+
+from ocpp.v16.enums import ChargePointStatus, FirmwareStatus, RegistrationStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_044_3(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send UpdateFirmware.req → CP responds with UpdateFirmware.conf
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'update-firmware', {
+        'location': 'http://firmware.example.com/fw.bin',
+        'retrieveDate': datetime.now().isoformat() + 'Z',
+    }))
+    await asyncio.wait_for(cp._received_update_firmware.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._update_firmware_data is not None
+
+    # Step 3-4: CP sends FirmwareStatusNotification(Downloading)
+    await cp.send_firmware_status_notification(FirmwareStatus.downloading)
+
+    # Step 5-6: CP sends FirmwareStatusNotification(Downloaded)
+    await cp.send_firmware_status_notification(FirmwareStatus.downloaded)
+
+    # Step 7-8: CP reports StatusNotification(Unavailable) for all connectors
+    for cid in (0, CONNECTOR_ID):
+        await cp.send_status_notification(cid, status=ChargePointStatus.unavailable)
+
+    # Step 9-10: CP sends FirmwareStatusNotification(Installing)
+    await cp.send_firmware_status_notification(FirmwareStatus.installing)
+
+    # Step 11-12: CP reboots and sends BootNotification
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 13-14: CP reports StatusNotification(Available) for all connectors
+    for cid in (0, CONNECTOR_ID):
+        await cp.send_status_notification(cid, status=ChargePointStatus.available)
+
+    # Step 15-16: CP sends FirmwareStatusNotification(InstallationFailed)
+    await cp.send_firmware_status_notification(FirmwareStatus.installation_failed)
+
+    start_task.cancel()

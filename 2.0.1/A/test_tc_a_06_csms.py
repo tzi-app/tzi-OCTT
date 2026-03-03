@@ -87,12 +87,12 @@ from utils import get_basic_auth_headers, create_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
-SECURITY_PROFILE_2_CP = os.environ['SECURITY_PROFILE_2_CP_A']
-SECURITY_PROFILE_3_CP = os.environ['SECURITY_PROFILE_3_CP_A']
+SECURITY_PROFILE_2_CP = os.environ['CP201_SP2']
+SECURITY_PROFILE_3_CP = os.environ['CP201_SP3']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 
@@ -106,7 +106,7 @@ async def test_tc_a_06(security_profile):
         cp_id = SECURITY_PROFILE_3_CP
         headers = {}
 
-    uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+    uri = f'{CSMS_ADDRESS}/{cp_id}'
 
     # Step 1-2: Attempt connection with TLS version lower than 1.2
     low_tls_ctx = create_ssl_context(
@@ -147,7 +147,12 @@ async def test_tc_a_06(security_profile):
     cp = TziChargePoint(cp_id, ws)
     start_task = asyncio.create_task(cp.start())
 
-    boot_response = await cp.send_boot_notification()
+    # B01.FR.12: For SP3, serialNumber must match the client certificate CN
+    # (which equals the station external_id). Without it, CSMS closes the connection.
+    if security_profile == 3:
+        boot_response = await cp.send_boot_notification_with_serial(cp_id)
+    else:
+        boot_response = await cp.send_boot_notification()
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)

@@ -42,3 +42,44 @@ Tool validations
 Expected result(s) / behaviour
     n/a
 """
+
+import asyncio
+import os
+from datetime import datetime
+import pytest
+
+from ocpp.v16.enums import FirmwareStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_044_2(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send UpdateFirmware.req → CP responds with UpdateFirmware.conf
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'update-firmware', {
+        'location': 'http://firmware.example.com/fw.bin',
+        'retrieveDate': datetime.now().isoformat() + 'Z',
+    }))
+    await asyncio.wait_for(cp._received_update_firmware.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._update_firmware_data is not None
+
+    # Step 3-4: CP sends FirmwareStatusNotification(Downloading)
+    await cp.send_firmware_status_notification(FirmwareStatus.downloading)
+
+    # Step 5-6: CP sends FirmwareStatusNotification(DownloadFailed)
+    await cp.send_firmware_status_notification(FirmwareStatus.download_failed)
+
+    start_task.cancel()

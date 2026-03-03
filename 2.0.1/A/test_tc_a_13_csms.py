@@ -72,22 +72,23 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import trigger_v201
 from utils import create_ssl_context, generate_csr
 
 logging.basicConfig(level=logging.INFO)
 
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
-SECURITY_PROFILE_3_CP = os.environ['SECURITY_PROFILE_3_CP_A']
+SECURITY_PROFILE_3_CP = os.environ['CP201_SP3']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
 @pytest.mark.asyncio
 async def test_tc_a_13():
     cp_id = SECURITY_PROFILE_3_CP
-    uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+    uri = f'{CSMS_ADDRESS}/{cp_id}'
     ssl_ctx = create_ssl_context(
         ca_cert=TLS_CA_CERT,
         client_cert=TLS_CLIENT_CERT,
@@ -105,11 +106,16 @@ async def test_tc_a_13():
     cp._certificate_signed_response_status = CertificateSignedStatusEnumType.accepted
     start_task = asyncio.create_task(cp.start())
 
-    # Step 1-2: Wait for CSMS to send TriggerMessageRequest(SignCombinedCertificate)
+    # Step 1-2: Trigger CSMS to send TriggerMessageRequest(SignCombinedCertificate)
+    trigger_task = asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+        'requestedMessage': 'SignCombinedCertificate',
+    }))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._trigger_message_data == 'SignCombinedCertificate', \
         f"Expected SignCombinedCertificate, got: {cp._trigger_message_data}"

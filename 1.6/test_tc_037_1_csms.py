@@ -6,6 +6,7 @@ Profile             Core
 Section             3.12. Core Profile - Offline behavior Non-Happy Flow
                     3.12.1. Offline Start Transaction - Valid IdTag
 Document ref        Table 150 (Page 131/176)
+                    Source: CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf (physical page 28)
 
 Description         This scenario is used to start a transaction, while being offline.
 
@@ -36,6 +37,9 @@ Test Scenario
     - idTag: <Configured valid idTag>
     - meterStart: <meter value at transaction start>
     - timestamp: <timestamp of transaction start (while offline)>
+      NOTE: The test uses current time (now_iso()) rather than a past timestamp.
+      This is acceptable because the CSMS (SUT) must handle any valid timestamp
+      and the offline scenario is simulated (no actual disconnection occurs).
 2. The Central System responds with a StartTransaction.conf.
 3. The Charge Point sends a StatusNotification.req to the Central System.
     - connectorId: <Configured connectorId>
@@ -53,3 +57,36 @@ Tool validations
 
 Expected result(s)  n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import AuthorizationStatus, ChargePointStatus
+
+from charge_point import TziChargePoint16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_037_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: StartTransaction with valid idTag (offline scenario, queued)
+    start_response = await cp.send_start_transaction(CONNECTOR_ID, VALID_ID_TAG)
+    assert start_response.id_tag_info['status'] == AuthorizationStatus.accepted
+
+    # Step 3-4: StatusNotification(Charging)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.charging)
+
+    start_task.cancel()

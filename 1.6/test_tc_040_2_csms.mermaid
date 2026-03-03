@@ -4,11 +4,11 @@ sequenceDiagram
 
     Note over CP,CS: TC_040_2_CSMS: Configuration keys - Invalid value
     Note over CP,CS: Profile: Core | OCPP 1.6J
-    Note over CP,CS: Doc ref: Section 3.13.2, Table 154, Page 134/176
+    Note over CP,CS: Doc ref: Section 3.13.2, Table 154, Page 134/176 (PDF p31)
 
     CS->>CP: 1. ChangeConfiguration.req
     Note right of CS: key = MeterValueSampleInterval
-    Note right of CS: value = (not specified by doc, TODO: confirm)
+    Note right of CS: (value not specified by test case document)
 
     CP-->>CS: 2. ChangeConfiguration.conf
     Note left of CP: status = Rejected

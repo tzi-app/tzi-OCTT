@@ -108,6 +108,19 @@ def _remove_nones(data, depth=0):
 
     return data
 
+def build_default_ssl_context():
+    """Build an SSL context for wss:// connections using TLS_CA_CERT env var.
+    Falls back to no cert verification for local dev when TLS_CA_CERT is unset."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ca_cert = os.environ.get('TLS_CA_CERT')
+    if ca_cert:
+        ctx.load_verify_locations(_resolve_path(ca_cert))
+    else:
+        ctx.verify_mode = ssl.CERT_NONE
+    ctx.check_hostname = False
+    return ctx
+
+
 def create_ssl_context(ca_cert=None, client_cert=None, client_key=None,
                        max_tls_version=None, check_hostname=True):
     """Create SSL context for TLS WebSocket connections."""

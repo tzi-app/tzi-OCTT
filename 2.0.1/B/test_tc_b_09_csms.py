@@ -25,7 +25,7 @@ Prerequisite(s)     N/a
 
 Test Scenario
 1. Manually request CSMS to set data for:
-   - OCPPCommCtrlr.OfflineThreshold
+   - OCPPCommCtrlr.OfflineThreshold1
 2. OCTT responds with SetVariablesResponse
 
 Tool validations
@@ -44,40 +44,29 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import (
     RegistrationStatusEnumType, ConnectorStatusEnumType, SetVariableStatusEnumType
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_variables
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
 @pytest.mark.asyncio
-async def test_tc_b_09():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_09(connection):
     """Set Variables - single value: CSMS sets OCPPCommCtrlr.OfflineThreshold."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._set_variables_response_status = SetVariableStatusEnumType.accepted
     start_task = asyncio.create_task(cp.start())
 
@@ -87,11 +76,21 @@ async def test_tc_b_09():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Wait for CSMS to send SetVariablesRequest
+    # Trigger CSMS to send SetVariablesRequest
+    trigger_task = asyncio.create_task(set_variables(BASIC_AUTH_CP, [
+        {
+            "component": {"name": "OCPPCommCtrlr"},
+            "variable": {"name": "OfflineThreshold"},
+            "attributeValue": "123",
+        },
+    ]))
+
+    # Wait for the CS to receive the SetVariablesRequest
     await asyncio.wait_for(
         cp._received_set_variables.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     # Validate the SetVariablesRequest content
     assert cp._set_variables_data is not None
@@ -116,4 +115,3 @@ async def test_tc_b_09():
         assert attr_type == 'Actual', f"Expected Actual attributeType, got: {attr_type}"
 
     start_task.cancel()
-    await ws.close()

@@ -32,11 +32,15 @@ Scenario
     Expanded scenario (from reusable states):
 
     --- Reusable State: Authorized (Table 200) ---
+    Description: "This state will simulate that the EV Driver is locally
+    authorizing to start a transaction on the simulated Charge Point."
     1. The Charge Point sends an Authorize.req to the Central System.
        - idTag = <Configured Valid IdTag>
     2. The Central System responds with an Authorize.conf.
 
     --- Reusable State: Charging (Table 201) ---
+    Description: "This state will simulate that the Charge Point starts a transaction."
+    Before: Reusable State(s): Authorized
     3. The Charge Point sends a StatusNotification.req to the Central System.
        - connectorId = <Configured ConnectorId>
        - status = Preparing
@@ -50,34 +54,16 @@ Scenario
        - status = Charging
     8. The Central System responds with a StatusNotification.conf.
 
-    NOTE: The official CSMS scenario does not include physical actions like
-    "[EV driver presents identification]" or "[EV driver plugs in cable]" — those
-    appear in the CS (Charge Point SUT) version (TC_004_1_CS, Table 4). The OCTT
-    tool simulates the Charge Point and drives these actions automatically.
-
-    NOTE: The official reusable states use "<Configured ConnectorId>" and
-    "<Configured Valid IdTag>" — the actual values come from OCTT configuration.
-
-    NOTE: The official Charging reusable state does not explicitly list errorCode,
-    meterStart, timestamp, or transactionId fields in the scenario steps. These
-    are implicit per the OCPP 1.6 message definitions.
-
-Tool Validations (from reusable states)
+Tool Validations (TC_004_1 itself has no tool validations; all come from reusable states)
     From Authorized state (Table 200):
         Step 2 (Central System -> Charge Point):
             Message: Authorize.conf
-            - idTagInfo.status SHOULD be "Accepted"
+            - idTagInfo.status should be Accepted
 
     From Charging state (Table 201):
-        Step 6 (Central System -> Charge Point):
+        Step 4 (Central System -> Charge Point):
             Message: StartTransaction.conf
-            - idTagInfo.status SHOULD be "Accepted"
-
-    NOTE: The official CSMS test case itself has no tool validations (n/a).
-    The validations above come from the reusable state definitions. The official
-    wording uses "should be" (not "MUST be"). The CS version (TC_004_1_CS)
-    additionally validates StatusNotification.req status for Preparing and
-    Charging — those are NOT present in the CSMS reusable states.
+            - idTagInfo.status should be Accepted
 
 Expected Result(s)  n/a (per official document)
                     (The Charging reusable state expects: "State is Charging")
@@ -123,3 +109,35 @@ Key Fields (from OCPP 1.6 spec, for implementation reference):
             - expiryDate (dateTime, optional)
             - parentIdTag (IdToken, optional)
 """
+
+import asyncio
+import os
+import pytest
+
+from charge_point import TziChargePoint16
+from reusable_states import authorized, charging
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TAG = os.environ['VALID_ID_TOKEN']
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_004_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Reusable State: Authorized (Table 200)
+    await authorized(cp, VALID_ID_TAG)
+
+    # Reusable State: Charging (Table 201)
+    start_response, transaction_id = await charging(cp, VALID_ID_TAG, CONNECTOR_ID)
+    assert transaction_id is not None
+
+    start_task.cancel()

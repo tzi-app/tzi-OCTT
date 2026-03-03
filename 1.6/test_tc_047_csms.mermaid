@@ -2,13 +2,13 @@ sequenceDiagram
     participant CP as Charge Point (OCTT)
     participant CS as Central System (SUT)
 
-    Note over CP,CS: Test Case: TC_047_CSMS (Table 167, Page 143)
+    Note over CP,CS: Test Case: TC_047_CSMS (Table 167, Pages 143-144/176)
     Note over CP,CS: Reservation of a Connector - Expire
     Note over CP,CS: Section 3.17.1 - Reservation of a Connector
     Note over CP,CS: Prerequisite: Central System supports Reservation feature profile
 
     CS->>CP: 1. ReserveNow.req
-    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag><br/>reservationId: <unique id><br/>expiryDate: current time + <Configured Expiry Date Offset>
+    Note left of CS: connectorId: <Configured ConnectorId><br/>idTag: <Configured Valid IdTag>
     Note right of CS: CS Validation (Step 1):<br/>- connectorId = <Configured ConnectorId><br/>- idTag = <Configured Valid IdTag><br/>- expiryDate = current time + <Configured Expiry Date Offset>
 
     CP-->>CS: 2. ReserveNow.conf (status: Accepted)
@@ -18,7 +18,7 @@ sequenceDiagram
     Note over CP: CP Validation (Step 3): status is Reserved
     CS-->>CP: 4. StatusNotification.conf
 
-    Note over CP,CS: [EV driver does not arrive before expiry date]
+    Note over CP,CS: [EV driver does not arrive at the reserved Connector before the expiry date]
 
     CP->>CS: 5. StatusNotification.req (status: Available)
     Note over CP: CP Validation (Step 5): status is Available

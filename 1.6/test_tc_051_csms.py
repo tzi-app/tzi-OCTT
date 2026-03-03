@@ -51,9 +51,61 @@ Tool validations (Central System side):
     - reservationId matches the reservationId from step 1
 
 Expected result(s):
-    The Charge Point handles the reservation correctly, cancelling only the
-    reservation with the right reservationId. After cancellation the connector
-    transitions back to Available status.
-    The Central System processes the response from the Charge Point to the
-    cancel reservation message.
+    CP: The Charge Point handles the reservation correctly, cancelling only the
+        reservation with the right reservationId.
+    CS: The Central System processes the response from the Charge Point to the
+        cancel reservation message.
 """
+
+import asyncio
+import os
+import pytest
+from datetime import datetime, timedelta
+
+from ocpp.v16.enums import ChargePointStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+VALID_ID_TAG = os.environ.get('VALID_ID_TOKEN', 'TEST_TAG')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_051(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send ReserveNow.req → CP responds Accepted
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'reserve-now', {
+        'connectorId': CONNECTOR_ID,
+        'expiryDate': (datetime.now() + timedelta(hours=1)).isoformat() + 'Z',
+        'idTag': VALID_ID_TAG,
+        'reservationId': 1,
+    }))
+    await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._reserve_now_data is not None
+    assert cp._reserve_now_data['connector_id'] != 0
+    reservation_id = cp._reserve_now_data['reservation_id']
+
+    # Step 3-4: CP sends StatusNotification(Reserved)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.reserved)
+
+    # Step 5-6: Wait for CSMS to send CancelReservation.req → CP responds Accepted
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'cancel-reservation', {'reservationId': 1}))
+    await asyncio.wait_for(cp._received_cancel_reservation.wait(), timeout=ACTION_TIMEOUT)
+    # Verify the cancellation targets the same reservation
+    assert cp._cancel_reservation_id == reservation_id
+
+    # Step 7-8: CP sends StatusNotification(Available)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.available)
+
+    start_task.cancel()

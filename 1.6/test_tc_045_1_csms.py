@@ -3,7 +3,8 @@ Test case name      Get Diagnostics
 Test case Id        TC_045_1_CSMS
 Section             3.16.1 (OCPP 1.6J Diagnostics)
 System under test   Central System
-Reference           Table 164, page 141/176 of CompliancyTestTool-TestCaseDocument
+Reference           Table 164, Section 3.16.1, pages 141-142/176 (PDF pages 38-39/73) of
+                    CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf
 
 Description         The Charge Point uploads a diagnostics log to a specified location based on a request of the
                     Central System.
@@ -72,3 +73,42 @@ OCPP 1.6 Protocol Notes
 - The Central System must handle the DiagnosticsStatusNotification.req by responding with
   an empty DiagnosticsStatusNotification.conf.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import DiagnosticsStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_045_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send GetDiagnostics.req → CP responds with GetDiagnostics.conf
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-diagnostics', {
+        'location': 'http://diagnostics.example.com/upload',
+    }))
+    await asyncio.wait_for(cp._received_get_diagnostics.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._get_diagnostics_data is not None
+
+    # Step 3-4: CP sends DiagnosticsStatusNotification(Uploading)
+    await cp.send_diagnostics_status_notification(DiagnosticsStatus.uploading)
+
+    # Step 5-6: CP sends DiagnosticsStatusNotification(Uploaded)
+    await cp.send_diagnostics_status_notification(DiagnosticsStatus.uploaded)
+
+    start_task.cancel()

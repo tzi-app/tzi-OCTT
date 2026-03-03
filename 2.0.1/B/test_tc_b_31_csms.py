@@ -41,40 +41,32 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import (
     RegistrationStatusEnumType, ConnectorStatusEnumType
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_pending_boot, send_call
 from utils import get_basic_auth_headers, validate_schema
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
 @pytest.mark.asyncio
-async def test_tc_b_31():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_31(connection):
     """Cold Boot CS - Pending/Rejected - TriggerMessage: CSMS triggers BootNotification."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
+    # Set pending provisioning so CSMS responds with Pending on boot
+    await set_pending_boot(BASIC_AUTH_CP)
 
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: BootNotification - expect Pending or Rejected
@@ -86,11 +78,20 @@ async def test_tc_b_31():
         RegistrationStatusEnumType.rejected,
     ), f"Expected Pending or Rejected, got: {boot_response.status}"
 
-    # Step 3-4: Wait for CSMS to send TriggerMessageRequest (BootNotification)
+    # Clear pending so second boot returns Accepted
+    await set_pending_boot(BASIC_AUTH_CP, pending=False)
+
+    # Step 3-4: Trigger CSMS to send TriggerMessageRequest (BootNotification)
+    trigger_task = asyncio.create_task(send_call(
+        BASIC_AUTH_CP, "TriggerMessage",
+        {"requestedMessage": "BootNotification"},
+    ))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
     assert cp._trigger_message_data == 'BootNotification', \
         f"Expected TriggerMessage for BootNotification, got: {cp._trigger_message_data}"
 
@@ -113,4 +114,3 @@ async def test_tc_b_31():
     }])
 
     start_task.cancel()
-    await ws.close()

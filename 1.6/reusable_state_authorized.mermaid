@@ -2,8 +2,8 @@ sequenceDiagram
     participant CP as Charge Point (Tool)
     participant CS as Central System (SUT)
 
-    Note over CP,CS: Table 200 - Reusable State: Authorized
-    Note over CP,CS: OCPP 1.6J
+    Note over CP,CS: Section 3.22, Table 200 - Reusable State: Authorized
+    Note over CP,CS: OCPP 1.6J (pages 173-174/176)
 
     CP->>CS: Authorize.req
     Note right of CP: idTag is <Configured Valid IdTag>

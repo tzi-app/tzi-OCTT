@@ -2,7 +2,8 @@
 Test case name      Trigger Message
 Test case Id        TC_054_CSMS
 Feature profile     Remote Trigger
-Document ref        Table 176, pages 149-150, Section 3.18.1
+Document ref        OCPP 1.6 CSMS Test Cases Section 3 (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
+                    Table 176, pages 149-150, Section 3.18.1
 
 Description         The Central System triggers a message from the Charge Point.
 
@@ -100,4 +101,92 @@ Tool validations
 
 Expected result(s)
     The Central System can request a message from a Charge Point and receive the requested message.
+
+Note(s)
+    - Step 18 allows NotImplemented response for FirmwareStatusNotification, making steps 19-20
+      conditional. This test always responds Accepted and sends the FirmwareStatusNotification
+      (happy path). The NotImplemented branch (where steps 19-20 are skipped) is not exercised.
+      The spec does not clarify whether the CSMS test must cover both branches.
 """
+
+import asyncio
+import os
+import pytest
+
+from ocpp.v16.enums import DiagnosticsStatus, FirmwareStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers, now_iso
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_054(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # --- Cycle 1: MeterValues ---
+    # Step 1-2: Wait for TriggerMessage(MeterValues, connectorId=CONNECTOR_ID)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'MeterValues', 'connectorId': CONNECTOR_ID}))
+    await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._trigger_message_requested == 'MeterValues'
+    assert cp._trigger_message_connector_id == CONNECTOR_ID
+    cp._received_trigger_message.clear()
+
+    # Step 3-4: CP sends MeterValues.req
+    await cp.send_meter_values(
+        CONNECTOR_ID,
+        [{'timestamp': now_iso(), 'sampled_value': [{'value': '0'}]}],
+    )
+
+    # --- Cycle 2: Heartbeat ---
+    # Step 5-6: Wait for TriggerMessage(Heartbeat)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'Heartbeat'}))
+    await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._trigger_message_requested == 'Heartbeat'
+    cp._received_trigger_message.clear()
+
+    # Step 7-8: CP sends Heartbeat.req
+    await cp.send_heartbeat()
+
+    # --- Cycle 3: StatusNotification ---
+    # Step 9-10: Wait for TriggerMessage(StatusNotification, connectorId=CONNECTOR_ID)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'StatusNotification', 'connectorId': CONNECTOR_ID}))
+    await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._trigger_message_requested == 'StatusNotification'
+    assert cp._trigger_message_connector_id == CONNECTOR_ID
+    cp._received_trigger_message.clear()
+
+    # Step 11-12: CP sends StatusNotification.req
+    await cp.send_status_notification(CONNECTOR_ID)
+
+    # --- Cycle 4: DiagnosticsStatusNotification ---
+    # Step 13-14: Wait for TriggerMessage(DiagnosticsStatusNotification)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'DiagnosticsStatusNotification'}))
+    await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._trigger_message_requested == 'DiagnosticsStatusNotification'
+    cp._received_trigger_message.clear()
+
+    # Step 15-16: CP sends DiagnosticsStatusNotification(Idle)
+    await cp.send_diagnostics_status_notification(DiagnosticsStatus.idle)
+
+    # --- Cycle 5: FirmwareStatusNotification ---
+    # Step 17-18: Wait for TriggerMessage(FirmwareStatusNotification)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'trigger-message', {'requestedMessage': 'FirmwareStatusNotification'}))
+    await asyncio.wait_for(cp._received_trigger_message.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._trigger_message_requested == 'FirmwareStatusNotification'
+    cp._received_trigger_message.clear()
+
+    # Step 19-20: CP sends FirmwareStatusNotification(Idle)
+    await cp.send_firmware_status_notification(FirmwareStatus.idle)
+
+    start_task.cancel()

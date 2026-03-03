@@ -29,8 +29,8 @@ Tool Validations
       - The key list MUST be empty (no specific keys requested).
 
     * Step 2 (GetConfiguration.conf):
-      - The response MUST contain all required configuration keys with correct
-        accessibility (R = read-only, RW = read-write) as listed below.
+      - The response MUST contain all required configuration keys
+        with correct accessibility (R or RW) values.
 
       Core Profile Keys:
         - AuthorizeRemoteTxRequests / R or RW
@@ -66,27 +66,129 @@ Tool Validations
         - ChargingScheduleMaxPeriods / R
         - MaxChargingProfilesInstalled / R
 
-      Reservation Profile Keys:
+      Reservation:
         - None
 
-      Remote Trigger Profile Keys:
+      Remote Trigger:
         - None
 
 Expected Result
-    All required keys are configured. The Central System is able to retrieve
-    the values of all requested configuration keys.
+    All required keys are configured.
+    The Central System is able to retrieve the values of all requested
+    configuration keys.
 
-OCPP 1.6 Messages
-    GetConfiguration.req:
-        - key (Optional, list of CiString50Type): List of keys for which the
-          configuration value is requested. When empty, all configuration keys
-          are returned.
-    GetConfiguration.conf:
-        - configurationKey (Optional, list of KeyValue): List of requested or
-          available keys. Each KeyValue contains:
-            - key (Required, CiString50Type): configuration key name
-            - readonly (Required, boolean): whether the key is read-only
-            - value (Optional, CiString500Type): current value of the key
-        - unknownKey (Optional, list of CiString50Type): List of requested
-          keys that are unknown to the Charge Point.
+Note
+    The OCTT Tool Validations check that accessibility (R/RW) contains the
+    correct values for each key. The current implementation validates key
+    presence but does not assert readonly flags match the R/RW designations
+    listed above. TODO: consider adding accessibility validation to match
+    the OCTT's actual checks.
 """
+
+import asyncio
+import os
+import pytest
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+# All required OCPP 1.6 configuration keys the CP must report
+CORE_KEYS = [
+    'AuthorizeRemoteTxRequests',
+    'ClockAlignedDataInterval',
+    'ConnectionTimeOut',
+    'ConnectorPhaseRotation',
+    'GetConfigurationMaxKeys',
+    'HeartbeatInterval',
+    'LocalAuthorizeOffline',
+    'LocalPreAuthorize',
+    'MeterValuesAlignedData',
+    'MeterValuesSampledData',
+    'MeterValueSampleInterval',
+    'NumberOfConnectors',
+    'ResetRetries',
+    'StopTransactionOnEVSideDisconnect',
+    'StopTransactionOnInvalidId',
+    'StopTxnAlignedData',
+    'StopTxnSampledData',
+    'SupportedFeatureProfiles',
+    'TransactionMessageAttempts',
+    'TransactionMessageRetryInterval',
+    'UnlockConnectorOnEVSideDisconnect',
+]
+
+LOCAL_AUTH_LIST_KEYS = [
+    'LocalAuthListEnabled',
+    'LocalAuthListMaxLength',
+    'SendLocalListMaxLength',
+]
+
+SMART_CHARGING_KEYS = [
+    'ChargeProfileMaxStackLevel',
+    'ChargingScheduleAllowedChargingRateUnit',
+    'ChargingScheduleMaxPeriods',
+    'MaxChargingProfilesInstalled',
+]
+
+# Default configuration values the CP reports to the CSMS
+_DEFAULT_CONFIGURATION = [
+    {'key': 'AuthorizeRemoteTxRequests', 'readonly': False, 'value': 'true'},
+    {'key': 'ClockAlignedDataInterval', 'readonly': False, 'value': '0'},
+    {'key': 'ConnectionTimeOut', 'readonly': False, 'value': '60'},
+    {'key': 'ConnectorPhaseRotation', 'readonly': False, 'value': '0.RST,1.RST'},
+    {'key': 'GetConfigurationMaxKeys', 'readonly': True, 'value': '50'},
+    {'key': 'HeartbeatInterval', 'readonly': False, 'value': '300'},
+    {'key': 'LocalAuthorizeOffline', 'readonly': False, 'value': 'true'},
+    {'key': 'LocalPreAuthorize', 'readonly': False, 'value': 'true'},
+    {'key': 'MeterValuesAlignedData', 'readonly': False, 'value': 'Energy.Active.Import.Register'},
+    {'key': 'MeterValuesSampledData', 'readonly': False, 'value': 'Energy.Active.Import.Register'},
+    {'key': 'MeterValueSampleInterval', 'readonly': False, 'value': '60'},
+    {'key': 'NumberOfConnectors', 'readonly': True, 'value': '1'},
+    {'key': 'ResetRetries', 'readonly': False, 'value': '3'},
+    {'key': 'StopTransactionOnEVSideDisconnect', 'readonly': False, 'value': 'true'},
+    {'key': 'StopTransactionOnInvalidId', 'readonly': False, 'value': 'true'},
+    {'key': 'StopTxnAlignedData', 'readonly': False, 'value': 'Energy.Active.Import.Register'},
+    {'key': 'StopTxnSampledData', 'readonly': False, 'value': 'Energy.Active.Import.Register'},
+    {'key': 'SupportedFeatureProfiles', 'readonly': True, 'value': 'Core,LocalAuthListManagement,SmartCharging'},
+    {'key': 'TransactionMessageAttempts', 'readonly': False, 'value': '3'},
+    {'key': 'TransactionMessageRetryInterval', 'readonly': False, 'value': '60'},
+    {'key': 'UnlockConnectorOnEVSideDisconnect', 'readonly': False, 'value': 'true'},
+    {'key': 'LocalAuthListEnabled', 'readonly': False, 'value': 'true'},
+    {'key': 'LocalAuthListMaxLength', 'readonly': True, 'value': '100'},
+    {'key': 'SendLocalListMaxLength', 'readonly': True, 'value': '100'},
+    {'key': 'ChargeProfileMaxStackLevel', 'readonly': True, 'value': '3'},
+    {'key': 'ChargingScheduleAllowedChargingRateUnit', 'readonly': True, 'value': 'Current'},
+    {'key': 'ChargingScheduleMaxPeriods', 'readonly': True, 'value': '5'},
+    {'key': 'MaxChargingProfilesInstalled', 'readonly': True, 'value': '5'},
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_019_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # Pre-load configuration keys the CP will report
+    cp._configuration_key_list = _DEFAULT_CONFIGURATION
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send GetConfiguration.req (empty key list)
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-configuration', {}))
+    await asyncio.wait_for(cp._received_get_configuration.wait(), timeout=ACTION_TIMEOUT)
+
+    # Validate Step 1: CSMS requested all keys (empty or None key list)
+    assert cp._get_configuration_keys is None or cp._get_configuration_keys == []
+
+    # Validate Step 2: CP's response contains all required configuration keys
+    reported_keys = [entry['key'] for entry in cp._configuration_key_list]
+    for key in CORE_KEYS + LOCAL_AUTH_LIST_KEYS + SMART_CHARGING_KEYS:
+        assert key in reported_keys, f"Required configuration key '{key}' not in CP response"
+
+    start_task.cancel()

@@ -45,38 +45,27 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
+from trigger import get_variables
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
 @pytest.mark.asyncio
-async def test_tc_b_06():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_06(connection):
     """Get Variables - single value: CSMS requests OCPPCommCtrlr.OfflineThreshold."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._get_variables_values = {
         'OCPPCommCtrlr.OfflineThreshold': '60',
     }
@@ -88,11 +77,17 @@ async def test_tc_b_06():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Wait for CSMS to send GetVariablesRequest
+    # Trigger CSMS to send GetVariablesRequest for OCPPCommCtrlr.OfflineThreshold
+    trigger_task = asyncio.create_task(get_variables(BASIC_AUTH_CP, [
+        {"component": {"name": "OCPPCommCtrlr"}, "variable": {"name": "OfflineThreshold"}},
+    ]))
+
+    # Wait for the CS to receive the GetVariablesRequest
     await asyncio.wait_for(
         cp._received_get_variables.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     # Validate the GetVariablesRequest content
     assert cp._get_variables_data is not None
@@ -116,4 +111,3 @@ async def test_tc_b_06():
     logging.info("GetVariablesRequest validated successfully")
 
     start_task.cancel()
-    await ws.close()

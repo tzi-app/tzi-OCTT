@@ -462,3 +462,6 @@ $RECYCLE.BIN/
 batch.sh
 tasks.txt
 tasks2.txt
+/run.sh
+/run2.sh
+/run3.sh

@@ -18,7 +18,8 @@ sequenceDiagram
     CP->>CS: 5. BootNotification.req
     CS-->>CP: 6. BootNotification.conf
 
-    CP->>CS: 7. StatusNotification.req (per connector, connectorId=0)
+    Note over CP,CS: [Send per connector and connectorId=0]
+    CP->>CS: 7. StatusNotification.req
     CS-->>CP: 8. StatusNotification.conf
 
-    Note over CP,CS: Password format: hex (32-40 chars) or plaintext UTF-8 (16-20 chars)
+    Note over CP,CS: Tool validation - Password format: hex (32-40 chars) or plaintext UTF-8 (16-20 chars)

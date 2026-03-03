@@ -49,12 +49,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from trigger import reset
+from utils import get_basic_auth_headers, build_default_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -65,11 +66,13 @@ async def test_tc_b_20():
     cp_id = BASIC_AUTH_CP
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
+    ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
 
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -83,11 +86,14 @@ async def test_tc_b_20():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for CSMS to send ResetRequest
+    # Step 1-2: Trigger CSMS to send ResetRequest with type OnIdle
+    trigger_task = asyncio.create_task(reset(BASIC_AUTH_CP, "OnIdle"))
+
     await asyncio.wait_for(
         cp._received_reset.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._reset_data is not None
     reset_type = cp._reset_data['type']
@@ -107,6 +113,7 @@ async def test_tc_b_20():
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 

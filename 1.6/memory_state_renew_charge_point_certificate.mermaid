@@ -1,10 +1,10 @@
 sequenceDiagram
-    participant CP as Charge Point (Tool)
-    participant CS as Central System (SUT)
+    participant CP as Charge Point (SUT)
+    participant CS as Central System (Tool)
 
-    Note over CP,CS: Memory State: RenewChargePointCertificate (Table 204, pp.175-176)
+    Note over CP,CS: Memory State: RenewChargePointCertificate (CSMS-Section3, Table 120, p.107/176)
     Note over CP,CS: OCPP 1.6J (Security Extension)
-    Note over CS: Optional config: CpoName = <Configured Vendor Name>
+    Note over CS: Config: CpoName is <Configured Vendor Name>
 
     CS->>CP: 1. ExtendedTriggerMessage.req
     Note left of CS: requestedMessage = SignChargePointCertificate<br/>connectorId = <Omitted>

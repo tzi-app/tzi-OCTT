@@ -3,7 +3,7 @@ Test case name      Basic Authentication - Valid username/password combination
 Test case Id        TC_085_CSMS
 Section             3.21 Security > 3.21.1 Secure connection setup
 System under test   Central System
-Document ref        Table 195, pages 169-170
+Document ref        Table 195, document pages 169-170 (PDF pages 66-67 of Section 3)
 
 Description         The Charge Point uses Basic authentication to authenticate itself to the Central System, when using
                     security profile 1 or 2.
@@ -21,6 +21,7 @@ Before (Preparations)
 Test Scenario
     1. The Charge Point sends a HTTP upgrade request without an Authorization header to the Central System.
     2. The Central System rejects the connection upgrade request.
+       Note: The expected HTTP status code is not specified. Test assumes 401 Unauthorized.
 
     3. The Charge Point sends a HTTP upgrade request with an Authorization header, containing a
        username/password combination.
@@ -28,6 +29,7 @@ Test Scenario
 
     5. The Charge Point sends a BootNotification.req
     6. The Central System responds with a BootNotification.conf
+       Note: The expected BootNotification status is not specified. Test assumes Accepted.
 
     [Send per connector and connectorId=0.]
     7. The Charge Point sends a StatusNotification.req
@@ -42,6 +44,58 @@ Tool Validations
 
     Post scenario validations: N/a
 
-Expected result(s) / behaviour: n/a
-    NOTE: Not explicitly listed in the CSMS version of the document; the corresponding CS version (TC_085_CS) shows n/a.
+Expected result(s) / behaviour: Not explicitly listed in the CSMS document for this test case.
 """
+
+import asyncio
+import os
+import pytest
+import websockets
+from websockets import InvalidStatusCode
+
+from ocpp.v16.enums import RegistrationStatus
+
+from charge_point import TziChargePoint16
+from utils import create_ssl_context, get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
+
+
+@pytest.mark.asyncio
+async def test_tc_085_no_auth_rejected():
+    """Step 1-2: Connection without Authorization header is rejected."""
+    ssl_ctx = create_ssl_context(
+        ca_cert=os.environ.get('TLS_CA_CERT'),
+        check_hostname=False,
+    ) if CSMS_ADDRESS.startswith('wss://') else None
+    with pytest.raises(InvalidStatusCode) as exc:
+        await websockets.connect(
+            uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+            subprotocols=['ocpp1.6'],
+            extra_headers={},
+            ssl=ssl_ctx,
+        )
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_085(connection):
+    """Step 3-8: Connection with valid auth succeeds, BootNotification + StatusNotification."""
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 5-6: BootNotification
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == RegistrationStatus.accepted
+
+    # Step 7-8: StatusNotification per connector (connectorId=0 and connectorId=1)
+    for cid in (0, 1):
+        await cp.send_status_notification(cid)
+
+    start_task.cancel()

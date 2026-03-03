@@ -55,42 +55,31 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import (
     RegistrationStatusEnumType, ConnectorStatusEnumType,
     GenericDeviceModelStatusEnumType
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import get_report
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 
 
 @pytest.mark.asyncio
-async def test_tc_b_18():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_18(connection):
     """Get Custom Report - componentCriteria + component/variables with empty and non-empty results."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     # First GetReport should return EmptyResultSet (Problem criteria)
     cp._get_report_response_status = GenericDeviceModelStatusEnumType.empty_result_set
     start_task = asyncio.create_task(cp.start())
@@ -101,11 +90,21 @@ async def test_tc_b_18():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for first GetReportRequest (componentCriteria = Problem)
+    component_variable = [{
+        "component": {"name": "EVSE", "evse": {"id": CONFIGURED_EVSE_ID}},
+        "variable": {"name": "AvailabilityState"},
+    }]
+
+    # Step 1-2: Trigger GetReportRequest with componentCriteria = Problem
+    trigger_task = asyncio.create_task(
+        get_report(BASIC_AUTH_CP, ["Problem"], component_variable, request_id=1)
+    )
+
     await asyncio.wait_for(
         cp._received_get_report.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._get_report_data is not None
     report_data = cp._get_report_data
@@ -136,10 +135,15 @@ async def test_tc_b_18():
     cp._received_get_report.clear()
     cp._get_report_response_status = GenericDeviceModelStatusEnumType.accepted
 
+    trigger_task2 = asyncio.create_task(
+        get_report(BASIC_AUTH_CP, ["Available"], component_variable, request_id=2)
+    )
+
     await asyncio.wait_for(
         cp._received_get_report.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task2
 
     report_data = cp._get_report_data
     logging.info(f"Second GetReportRequest received: {report_data}")
@@ -189,4 +193,3 @@ async def test_tc_b_18():
     )
 
     start_task.cancel()
-    await ws.close()

@@ -3,33 +3,29 @@ Test case name      Update Charging Station Certificate by request of CSMS - Suc
 Test case Id        TC_A_11_CSMS
 Use case Id(s)      A02 & F06
 Requirement(s)      A02.FR.11, A02.FR.14 & F06.FR.01
-
-Requirement Details:
-    A02.FR.11: Upon receipt of a SignCertificateRequest AND It is able to process the request The CSMS SHALL set status to Accepted in the SignCertificateResponse.
-        Precondition: Upon receipt of a SignCertificateRequest AND It is able to process the request
-    A02.FR.14: When receiving a SignCertificateRequest with certificateType included It is RECOMMENDED for the CSMS to set the certificateType field in the CertificateSignedRequest to the type of certificate in the SignCertificateRequest.
-        Precondition: When receiving a SignCertificateRequest with certificateType included
-    F06.FR.01: In the TriggerMessageRequest message, the CSMS SHALL indicate which message(s) it wishes to receive.
 System under test   CSMS
-
-Description         The CSMS is able to request the Charging Station to update its charging station certificate using the
-                    TriggerMessageRequest message.
-
-Purpose             To verify if the CSMS is able to request the Charging Station to update its Charging Station
-                    Certificate.
-
 Prerequisite(s)     The CSMS supports security profile 3
 
-Test Scenario
-1. Execute Reusable State RenewChargingStationCertificate
-2. The OCTT disconnects its current connection and reconnects to the CSMS with the new certificate.
-3. The CSMS accepts the incoming connection request using the new certificate.
+Requirement Details:
+    A02.FR.11: Upon receipt of a SignCertificateRequest the CSMS SHALL set status to Accepted in the SignCertificateResponse.
+    A02.FR.14: The CSMS SHOULD echo the certificateType from SignCertificateRequest into CertificateSignedRequest.
+    F06.FR.01: The CSMS SHALL indicate which message it wishes to receive in the TriggerMessageRequest.
 
-Tool validations
-    N/a
+Test Scenario:
+    Step 1: Execute Reusable State RenewChargingStationCertificate
+        The reusable state performs the full certificate renewal handshake:
+        1a. CSMS sends TriggerMessageRequest(requestedMessage=SignChargingStationCertificate)
+        1b. CP responds TriggerMessageResponse(status=Accepted)
+        1c. CP generates a new key pair and CSR (Certificate Signing Request)
+        1d. CP sends SignCertificateRequest(csr=<PEM-encoded CSR>, certificateType=ChargingStationCertificate)
+        1e. CSMS responds SignCertificateResponse(status=Accepted)
+        1f. CSMS sends CertificateSignedRequest(certificateChain=<signed cert from CSR>, certificateType=ChargingStationCertificate)
+        1g. CP responds CertificateSignedResponse(status=Accepted)
+    Step 2: CP disconnects and reconnects to the CSMS using the NEW certificate (from 1f) and the NEW private key (from 1c).
+    Step 3: CSMS accepts the incoming connection with the new certificate.
 
 Post scenario validations:
-    The OCTT and the CSMS are connected.
+    The CP and the CSMS are connected using the renewed certificate.
 """
 
 import asyncio
@@ -46,22 +42,23 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
+from trigger import trigger_v201
 from utils import create_ssl_context, generate_csr, save_private_key_to_temp, save_cert_chain_to_temp
 
 logging.basicConfig(level=logging.INFO)
 
-CSMS_WSS_ADDRESS = os.environ['CSMS_WSS_ADDRESS']
+CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 TLS_CA_CERT = os.environ['TLS_CA_CERT']
 TLS_CLIENT_CERT = os.environ['TLS_CLIENT_CERT']
 TLS_CLIENT_KEY = os.environ['TLS_CLIENT_KEY']
-SECURITY_PROFILE_3_CP = os.environ['SECURITY_PROFILE_3_CP_A']
+SECURITY_PROFILE_3_CP = os.environ['CP201_SP3']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
 
 @pytest.mark.asyncio
 async def test_tc_a_11():
     cp_id = SECURITY_PROFILE_3_CP
-    uri = f'{CSMS_WSS_ADDRESS}/{cp_id}'
+    uri = f'{CSMS_ADDRESS}/{cp_id}'
     ssl_ctx = create_ssl_context(
         ca_cert=TLS_CA_CERT,
         client_cert=TLS_CLIENT_CERT,
@@ -80,11 +77,16 @@ async def test_tc_a_11():
     start_task = asyncio.create_task(cp.start())
 
     # Step 1: Execute Reusable State RenewChargingStationCertificate
-    # Wait for CSMS to send TriggerMessageRequest(SignChargingStationCertificate)
+    # Trigger the CSMS to send TriggerMessageRequest(SignChargingStationCertificate)
+    trigger_task = asyncio.create_task(trigger_v201(cp_id, 'trigger-message', {
+        'requestedMessage': 'SignChargingStationCertificate',
+    }))
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     assert cp._trigger_message_data == 'SignChargingStationCertificate', \
         f"Expected SignChargingStationCertificate, got: {cp._trigger_message_data}"

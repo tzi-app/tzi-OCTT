@@ -4,7 +4,6 @@ Test case Id        TC_048_3_CSMS
 OCPP Version        1.6J
 Document Ref        Table 170, pages 145-146/176 (CompliancyTestTool-TestCaseDocument 2025-11)
 Section             3.17.1 - Reservation of a Connector
-                    NOTE: Section reference is from the OCPP 1.6 specification, not the test case document.
 
 Description         The Central System attempts to reserve a Connector, but the reservation
                     is not made, instead the status Unavailable is returned by the Charge Point.
@@ -24,6 +23,8 @@ Test Scenario
    - connectorId: <Configured ConnectorId>
    - type: Inoperative
 2. The Charge Point responds with a ChangeAvailability.conf to the Central System.
+   NOTE: The document does not specify the ChangeAvailability.conf status value.
+         The implementation uses "Accepted" (CP accepts the Inoperative request).
 3. The Charge Point sends a StatusNotification.req to the Central System.
    - status: Unavailable
    - connectorId: same connectorId as in step 1
@@ -59,3 +60,55 @@ Expected result(s) / behaviour:
     Central System (SUT) side:
         The Central System accepts the Reservation message with the not Accepted status.
 """
+
+import asyncio
+import os
+import pytest
+from datetime import datetime, timedelta
+
+from ocpp.v16.enums import ChargePointStatus, ReservationStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+VALID_ID_TAG = os.environ.get('VALID_ID_TOKEN', 'TEST_TAG')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_048_3(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Set CP to respond with Unavailable status for the upcoming ReserveNow
+    cp._reserve_now_response_status = ReservationStatus.unavailable
+
+    # Step 1-2: Wait for CSMS to send ChangeAvailability.req → CP responds Accepted
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'change-availability', {
+        'connectorId': CONNECTOR_ID,
+        'type': 'Inoperative',
+    }))
+    await asyncio.wait_for(cp._received_change_availability.wait(), timeout=ACTION_TIMEOUT)
+
+    # Step 3-4: CP sends StatusNotification(Unavailable)
+    await cp.send_status_notification(CONNECTOR_ID, status=ChargePointStatus.unavailable)
+
+    # Step 5-6: Wait for CSMS to send ReserveNow.req → CP responds Unavailable
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'reserve-now', {
+        'connectorId': CONNECTOR_ID,
+        'expiryDate': (datetime.now() + timedelta(hours=1)).isoformat() + 'Z',
+        'idTag': VALID_ID_TAG,
+        'reservationId': 1,
+    }))
+    await asyncio.wait_for(cp._received_reserve_now.wait(), timeout=ACTION_TIMEOUT)
+    assert cp._reserve_now_data is not None
+
+    start_task.cancel()

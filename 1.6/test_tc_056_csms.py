@@ -3,7 +3,7 @@ Test case name      Central Smart Charging - TxDefaultProfile
 Test case Id        TC_056_CSMS
 Feature profile     SmartCharging
 
-Reference           CompliancyTestTool-TestCaseDocument, Table 178, page 151,
+Reference           CompliancyTestTool-TestCaseDocument, Table 178, pages 151-152,
                     section 3.19.1 Central Smart Charging
 
 Description         The Central System sets a default schedule for new transactions.
@@ -47,3 +47,86 @@ Tool validations
 
 Expected result(s) / behaviour: n/a
 """
+
+import asyncio
+import os
+from datetime import datetime, timedelta
+import pytest
+
+from ocpp.v16.enums import ChargingProfileStatus
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+CONNECTOR_ID = int(os.environ.get('CONFIGURED_CONNECTOR_ID', '1'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_056(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send SetChargingProfile.req
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'set-charging-profile', {
+        'connectorId': CONNECTOR_ID,
+        'csChargingProfiles': {
+            'chargingProfileId': 1,
+            'stackLevel': 0,
+            'chargingProfilePurpose': 'TxDefaultProfile',
+            'chargingProfileKind': 'Absolute',
+            'validFrom': datetime.now().isoformat() + 'Z',
+            'validTo': (datetime.now() + timedelta(days=1)).isoformat() + 'Z',
+            'chargingSchedule': {
+                'startSchedule': datetime.now().isoformat() + 'Z',
+                'chargingRateUnit': 'A',
+                'duration': 86400,
+                'chargingSchedulePeriod': [
+                    {'startPeriod': 0, 'limit': 6.0, 'numberPhases': 3},
+                ],
+            },
+        },
+    }))
+    await asyncio.wait_for(cp._received_set_charging_profile.wait(), timeout=ACTION_TIMEOUT)
+
+    # Validate SetChargingProfile.req fields
+    profile_data = cp._set_charging_profile_data
+    assert profile_data is not None
+    assert profile_data['connector_id'] == CONNECTOR_ID
+
+    profile = profile_data['cs_charging_profiles']
+    assert profile['charging_profile_purpose'] == 'TxDefaultProfile'
+    assert profile['charging_profile_kind'] == 'Absolute'
+    assert profile.get('valid_from') is not None
+    assert profile.get('valid_to') is not None
+    assert profile.get('transaction_id') is None  # must be omitted
+    assert profile.get('recurrency_kind') is None  # must be omitted
+
+    schedule = profile['charging_schedule']
+    assert schedule.get('start_schedule') is not None
+    assert schedule.get('charging_rate_unit') is not None
+    assert schedule.get('duration') is not None
+
+    periods = schedule['charging_schedule_period']
+    assert len(periods) > 0
+    assert periods[0]['limit'] in (6.0, 6000.0)
+
+    # Validate stackLevel
+    assert profile.get('stack_level') is not None
+
+    # Validate first chargingSchedulePeriod startPeriod
+    assert periods[0].get('start_period') is not None
+
+    # Validate numberPhases (if not 3, must be present; if 3, may be omitted)
+    number_phases = periods[0].get('number_phases')
+    if number_phases is not None:
+        assert isinstance(number_phases, int)
+
+    start_task.cancel()

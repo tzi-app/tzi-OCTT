@@ -46,19 +46,17 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
-import time
 import logging
-
-import websockets
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
+from trigger import set_items_per_message, get_variables
 from utils import get_basic_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -74,20 +72,11 @@ EXPECTED_VARIABLES = {
 
 
 @pytest.mark.asyncio
-async def test_tc_b_08():
+@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_08(connection):
     """Get Variables - limit to max: CSMS must not exceed MaxItemsPerMessageGetVariables."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
-
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
-
-    cp = TziChargePoint(cp_id, ws)
+    cp = TziChargePoint(BASIC_AUTH_CP, connection)
     cp._get_variables_values = {
         'DeviceDataCtrlr.ItemsPerMessage': '4',
         'DeviceDataCtrlr.BytesPerMessage': '4096',
@@ -100,6 +89,18 @@ async def test_tc_b_08():
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
+
+    # Set ItemsPerMessageGetVariables limit to 4
+    await set_items_per_message(BASIC_AUTH_CP, get_variables=MAX_ITEMS_PER_MESSAGE)
+
+    # Trigger CSMS to send GetVariablesRequest for 5 variables (should split into 4 + 1)
+    trigger_task = asyncio.create_task(get_variables(BASIC_AUTH_CP, [
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "ItemsPerMessage", "instance": "GetReport"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "ItemsPerMessage", "instance": "GetVariables"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "BytesPerMessage", "instance": "GetReport"}},
+        {"component": {"name": "DeviceDataCtrlr"}, "variable": {"name": "BytesPerMessage", "instance": "GetVariables"}},
+        {"component": {"name": "AuthCtrlr"}, "variable": {"name": "AuthorizeRemoteStart"}},
+    ]))
 
     # Wait for first GetVariablesRequest
     await asyncio.wait_for(
@@ -145,5 +146,5 @@ async def test_tc_b_08():
 
     logging.info(f"Validated GetVariablesRequest split sizes {batch_sizes} and variables {sorted(EXPECTED_VARIABLES)}")
 
+    await trigger_task
     start_task.cancel()
-    await ws.close()

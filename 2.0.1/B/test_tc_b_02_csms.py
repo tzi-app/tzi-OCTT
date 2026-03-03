@@ -3,12 +3,6 @@ Test case name      Cold Boot Charging Station - Pending
 Test case Id        TC_B_02_CSMS
 Use case Id(s)      B02
 Requirement(s)      B02.FR.01, B02.FR.06
-
-Requirement Details:
-    B02.FR.01: After the Charging Station received the Pending status. The CSMS MAY send messages to retrieve information from the Charging Station (as described in use cases B06, B07, B08) or change its configuration by SetVariablesRequest (as described in use case B05). The Charging Station SHALL respond to these messages. The Pending status can thus indicate that the
-        Precondition: After the Charging Station received the Pending status.
-    B02.FR.06: When the CSMS returns the Pending status The communication channel SHALL NOT be closed by either the Charging Station or the CSMS.
-        Precondition: When the CSMS returns the Pending status
 System under test   CSMS
 
 Description         The booting mechanism allows a Charging Station to provide some general information about the
@@ -18,28 +12,48 @@ Description         The booting mechanism allows a Charging Station to provide s
                     wants to retrieve or set certain information on the Charging Station before it will accept
                     the Charging Station.
 Purpose             To verify whether the CSMS is able to accept the communications of a registered Charging Station.
-
 Prerequisite(s)     The CSMS is configured to first respond to a BootNotificationRequest with status Pending.
 
 Test Scenario
-1. The OCTT sends a BootNotificationRequest with reason PowerUp
-2. The CSMS responds with a BootNotificationResponse (status: Pending)
-3. The OCTT sends a BootNotificationRequest with reason PowerUp
-4. The CSMS responds with a BootNotificationResponse (status: Accepted)
-5. The OCTT notifies the CSMS about the current state of all connectors.
-6. The CSMS responds accordingly.
+    Charging Station                                    CSMS
+    1. BootNotificationRequest  ------>
+       reason: PowerUp
+       chargingStation.model: <Configured model>
+       chargingStation.vendorName: <Configured vendorName>
+                                                        2. BootNotificationResponse
+                                                           status: Pending
+
+    (wait interval seconds before retrying)
+    Note: During this interval, the CSMS MAY send messages to retrieve information (B06, B07, B08)
+    or change configuration via SetVariablesRequest (B05). The Test System will respond to these.
+
+    3. BootNotificationRequest  ------>
+       reason: PowerUp
+       chargingStation.model: <Configured model>
+       chargingStation.vendorName: <Configured vendorName>
+                                                        4. BootNotificationResponse
+                                                           status: Accepted
+
+    5. StatusNotificationRequest  ------>
+       connectorStatus: Available
+       NotifyEventRequest  ------>
+       trigger: Delta
+       actualValue: "Available"
+       component.name: "Connector"
+       variable.name: "AvailabilityState"
+                                                        6. CSMS responds accordingly.
 
 Note(s):
-- If the interval in the BootNotificationResponse equals 0, the OCTT will wait
+- If the interval in the BootNotificationResponse equals 0, the Test System will wait
   <Configured heartbeatInterval> seconds, before sending another BootNotificationRequest.
-- If the interval in the BootNotificationResponse > 0, the OCTT will wait <Interval provided at the
-  BootNotificationResponse> seconds, before sending another BootNotificationRequest.
+- If the interval in the BootNotificationResponse > 0, the Test System will wait <Interval
+  provided at the BootNotificationResponse> seconds, before sending another BootNotificationRequest.
 
 Tool validations
 * Step 2:
     Message: BootNotificationResponse
     - status Pending
-* Step 3:
+* Step 4:
     Message: BootNotificationResponse
     - status Accepted
 
@@ -50,25 +64,41 @@ Post scenario validations:
 import asyncio
 import pytest
 import os
+import time
+
+import websockets
 
 from ocpp.v201.enums import RegistrationStatusEnumType, ConnectorStatusEnumType
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, validate_schema
+from trigger import set_pending_boot
+from utils import get_basic_auth_headers, validate_schema, build_default_ssl_context
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_B']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("connection", [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
-                         indirect=True)
-async def test_tc_b_02(connection):
+async def test_tc_b_02():
     """Cold Boot Charging Station - Pending: CSMS first responds Pending, then Accepted."""
-    assert connection.open
+    # Pre-test: tell the CSMS to put this station into Pending mode
+    await set_pending_boot(BASIC_AUTH_CP)
 
-    cp = TziChargePoint(BASIC_AUTH_CP, connection)
+    # Connect to the CSMS
+    uri = f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}'
+    headers = get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD)
+    ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
+    ws = await websockets.connect(
+        uri=uri,
+        subprotocols=['ocpp2.0.1'],
+        extra_headers=headers,
+        ssl=ssl_ctx,
+    )
+    time.sleep(0.5)
+    assert ws.open
+
+    cp = TziChargePoint(BASIC_AUTH_CP, ws)
     start_task = asyncio.create_task(cp.start())
 
     # Step 1-2: First BootNotification - expect Pending
@@ -76,6 +106,7 @@ async def test_tc_b_02(connection):
     assert boot_response is not None
     assert validate_schema(data=boot_response, schema_file_name='BootNotificationResponse.json')
     assert boot_response.status == RegistrationStatusEnumType.pending
+    await set_pending_boot(BASIC_AUTH_CP, pending=False)
 
     # Wait for the interval specified by the CSMS before retrying
     interval = boot_response.interval if boot_response.interval > 0 else 10
@@ -102,3 +133,4 @@ async def test_tc_b_02(connection):
     }])
 
     start_task.cancel()
+    await ws.close()

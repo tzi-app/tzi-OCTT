@@ -2,7 +2,8 @@
 Test case name      Get Local List Version (not supported)
 Test case Id        TC_042_1_CSMS
 System under test   Central System
-Reference           Section 3.14.1, Table 155, Page 135 (CompliancyTestTool-TestCaseDocument)
+Reference           Section 3.14.1, Table 155, Document Page 135 (PDF Page 32)
+                    (CompliancyTestTool-TestCaseDocument-CSMS-Section3.pdf)
 
 Description         The Central System can request a Charge Point for the version number of the Local
                     Authorization List.
@@ -18,7 +19,7 @@ Before
     Reusable State(s): n/a
 
 Test Scenario
-1. The Central System sends a GetLocalListVersion.req to the Charge Point.
+1. The Central System sends a GetLocalListVersion.req.
 2. The Charge Point responds with a GetLocalListVersion.conf.
 
 Tool validations
@@ -30,3 +31,33 @@ Tool validations
 Expected result(s) / behaviour
     - n/a
 """
+
+import asyncio
+import os
+import pytest
+
+from charge_point import TziChargePoint16
+from trigger import trigger_v16
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP16_SP1']
+TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+ACTION_TIMEOUT = int(os.environ.get('CSMS_ACTION_TIMEOUT', '30'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD))],
+                         indirect=True)
+async def test_tc_042_1(connection):
+    assert connection.open
+    cp = TziChargePoint16(BASIC_AUTH_CP, connection)
+    # Local list not supported → respond with listVersion=-1
+    cp._local_list_version = -1
+    start_task = asyncio.create_task(cp.start())
+
+    # Step 1-2: Wait for CSMS to send GetLocalListVersion.req → CP responds with listVersion=-1
+    asyncio.create_task(trigger_v16(BASIC_AUTH_CP, 'get-local-list-version', {}))
+    await asyncio.wait_for(cp._received_get_local_list_version.wait(), timeout=ACTION_TIMEOUT)
+
+    start_task.cancel()

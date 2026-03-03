@@ -33,6 +33,7 @@ import pytest
 import os
 
 from tzi_charge_point import TziChargePoint
+from trigger import send_call
 from utils import get_basic_auth_headers
 
 BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_C']
@@ -50,8 +51,11 @@ async def test_tc_c_37(connection):
     # Default _clear_cache_response_status is ClearCacheStatusType.accepted
     start_task = asyncio.create_task(cp.start())
 
-    # Wait for the CSMS to send a ClearCacheRequest (triggered externally by CSMS operator/admin)
+    # Trigger CSMS to send ClearCacheRequest
+    trigger_task = asyncio.create_task(send_call(BASIC_AUTH_CP, "ClearCache", {}))
+
     await asyncio.wait_for(cp._received_clear_cache.wait(), timeout=CSMS_ACTION_TIMEOUT)
+    await trigger_task
 
     assert cp._received_clear_cache.is_set(), "CSMS did not send ClearCacheRequest within timeout"
 
