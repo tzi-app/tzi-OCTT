@@ -65,7 +65,7 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 from reusable_states.stop_authorized import stop_authorized
@@ -92,10 +92,12 @@ async def test_tc_g_17():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
