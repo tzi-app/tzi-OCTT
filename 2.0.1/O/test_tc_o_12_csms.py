@@ -52,6 +52,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -89,6 +90,10 @@ async def test_tc_o_12():
 
     # Before: Set up a display message first
     cp._set_display_message_response_status = DisplayMessageStatusEnumType.accepted
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": 1, "priority": "NormalCycle",
+        "message": {"format": "UTF8", "content": "Original display message"},
+    }})
     await asyncio.wait_for(
         cp._received_set_display_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
@@ -101,7 +106,11 @@ async def test_tc_o_12():
     cp._received_set_display_message.clear()
     cp._set_display_message_data = None
 
-    # Step 1-2: Wait for CSMS to send replacement SetDisplayMessageRequest
+    # Step 1-2: Trigger CSMS to send replacement SetDisplayMessageRequest
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": configured_id, "priority": "NormalCycle",
+        "message": {"format": "UTF8", "content": "Replacement display message"},
+    }})
     await asyncio.wait_for(
         cp._received_set_display_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,

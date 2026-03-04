@@ -63,6 +63,7 @@ from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType, EVSE
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -101,11 +102,26 @@ async def test_tc_h_17():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available, evse_id=EVSE_ID)
 
-    # Step 1-2: Wait for CSMS to send ReserveNowRequest
+    # Step 1-2: Trigger CSMS to send ReserveNowRequest
+    reservation_id_to_send = 1
+    async def trigger_reserve_now():
+        await asyncio.sleep(1)
+        from datetime import datetime, timezone, timedelta
+        expiry = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
+        await send_call(BASIC_AUTH_CP, "ReserveNow", {
+            "id": reservation_id_to_send,
+            "expiryDateTime": expiry,
+            "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+            "evseId": EVSE_ID,
+        })
+
+    trigger_task = asyncio.create_task(trigger_reserve_now())
+
     await asyncio.wait_for(
         cp._received_reserve_now.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate ReserveNowRequest content
     assert cp._reserve_now_data is not None
@@ -145,11 +161,20 @@ async def test_tc_h_17():
     ]
     await cp.send_notify_event(data=event_data)
 
-    # Step 5-6: Wait for CSMS to send CancelReservationRequest
+    # Step 5-6: Trigger CSMS to send CancelReservationRequest
+    async def trigger_cancel_reservation():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "CancelReservation", {
+            "reservationId": reservation_id,
+        })
+
+    cancel_trigger_task = asyncio.create_task(trigger_cancel_reservation())
+
     await asyncio.wait_for(
         cp._received_cancel_reservation.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    cancel_trigger_task.cancel()
 
     # Validate CancelReservationRequest content
     assert cp._cancel_reservation_data is not None

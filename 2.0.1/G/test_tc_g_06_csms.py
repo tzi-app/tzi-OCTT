@@ -58,6 +58,7 @@ from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -95,11 +96,20 @@ async def test_tc_g_06():
     # Before: CS was set to Unavailable - report as Unavailable initially
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.unavailable, evse_id=EVSE_ID)
 
-    # Step 1-2: Wait for CSMS to send ChangeAvailabilityRequest (Operative)
+    # Step 1-2: Trigger CSMS to send ChangeAvailabilityRequest (station-level Operative)
+    async def trigger_change_availability():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "ChangeAvailability", {
+            "operationalStatus": "Operative",
+        })
+
+    trigger_task = asyncio.create_task(trigger_change_availability())
+
     await asyncio.wait_for(
         cp._received_change_availability.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
     req_data = cp._change_availability_data
     assert req_data is not None
 

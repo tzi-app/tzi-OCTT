@@ -199,11 +199,16 @@ async def test_tc_i_01():
 
     # Steps 7-10: Send MeterValue periodic updates (2 iterations)
     # After each TransactionEventResponse, if no totalCost, expect CostUpdatedRequest from CSMS
+    #
+    # Energy is calculated as MAX(meter) - MIN(meter). The first meter reading
+    # alone yields delta=0 (only one data point), so cost won't change from the
+    # session fee. The initial CostUpdated (sent at transaction start) satisfies
+    # iteration 0. Iteration 1 adds a second reading, producing a real energy
+    # delta and a genuine cost change that triggers a fresh CostUpdated.
     for i in range(2):
         if i > 0:
             await asyncio.sleep(SAMPLED_METER_VALUES_INTERVAL)
-
-        cp._received_cost_updated.clear()
+            cp._received_cost_updated.clear()
 
         meter_event = TransactionEvent(
             event_type=TransactionEventType.updated,
@@ -228,25 +233,41 @@ async def test_tc_i_01():
         # If the TransactionEventResponse does not include totalCost,
         # the CSMS should send a CostUpdatedRequest
         if meter_response.total_cost is None:
-            try:
-                await asyncio.wait_for(
-                    cp._received_cost_updated.wait(),
-                    timeout=CSMS_ACTION_TIMEOUT,
-                )
-                assert cp._cost_updated_data is not None
-                assert cp._cost_updated_data['transaction_id'] == transaction_id, \
-                    f"CostUpdated transactionId mismatch: expected {transaction_id}, " \
-                    f"got {cp._cost_updated_data['transaction_id']}"
+            # Wait for a CostUpdated matching THIS transaction (the CSMS periodic
+            # sweep may deliver CostUpdated for stale transactions from prior runs).
+            deadline = asyncio.get_event_loop().time() + CSMS_ACTION_TIMEOUT
+            matched = False
+            while asyncio.get_event_loop().time() < deadline:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    break
+                try:
+                    await asyncio.wait_for(
+                        cp._received_cost_updated.wait(),
+                        timeout=remaining,
+                    )
+                except asyncio.TimeoutError:
+                    break
+                if cp._cost_updated_data and cp._cost_updated_data['transaction_id'] == transaction_id:
+                    matched = True
+                    break
+                # Wrong transaction — clear and keep waiting
                 logging.info(
-                    f"Received CostUpdatedRequest (iteration {i + 1}): "
-                    f"totalCost={cp._cost_updated_data['total_cost']}, "
-                    f"transactionId={cp._cost_updated_data['transaction_id']}"
+                    f"Ignoring CostUpdated for stale transaction "
+                    f"{cp._cost_updated_data.get('transaction_id')}"
                 )
-            except asyncio.TimeoutError:
+                cp._received_cost_updated.clear()
+
+            if not matched:
                 pytest.fail(
                     f"CSMS did not send CostUpdatedRequest within {CSMS_ACTION_TIMEOUT}s "
                     f"after MeterValue iteration {i + 1} (and TransactionEventResponse had no totalCost)"
                 )
+            logging.info(
+                f"Received CostUpdatedRequest (iteration {i + 1}): "
+                f"totalCost={cp._cost_updated_data['total_cost']}, "
+                f"transactionId={cp._cost_updated_data['transaction_id']}"
+            )
         else:
             logging.info(
                 f"TransactionEventResponse included totalCost={meter_response.total_cost} "

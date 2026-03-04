@@ -127,7 +127,7 @@ async def test_tc_k_55():
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
     ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -161,20 +161,24 @@ async def test_tc_k_55():
     await asyncio.wait_for(cp._first_profile_received.wait(), timeout=CSMS_ACTION_TIMEOUT)
     profile1 = cp._set_charging_profile_requests[0]
 
+    def get_field(d, snake, camel):
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
     # Validate step 3
     assert profile1['evse_id'] == EVSE_ID
     p1 = profile1['charging_profile']
-    purpose1 = p1.get('charging_profile_purpose') or p1.get('chargingProfilePurpose')
+    purpose1 = get_field(p1, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose1 in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile)
-    tx_id1 = p1.get('transaction_id') or p1.get('transactionId')
+    tx_id1 = get_field(p1, 'transaction_id', 'transactionId')
     assert tx_id1 == transaction_id
 
     # Step 5: Send NotifyEVChargingScheduleRequest that EXCEEDS limits of step 3
-    schedules1 = p1.get('charging_schedule') or p1.get('chargingSchedule')
+    schedules1 = get_field(p1, 'charging_schedule', 'chargingSchedule')
     schedule1 = schedules1[0] if isinstance(schedules1, list) else schedules1
     # Create an exceeding schedule by increasing the limit
     exceeding_schedule = dict(schedule1)
-    periods = exceeding_schedule.get('charging_schedule_period') or exceeding_schedule.get('chargingSchedulePeriod')
+    periods = get_field(exceeding_schedule, 'charging_schedule_period', 'chargingSchedulePeriod')
     if periods:
         exceeding_periods = []
         for p in periods:
@@ -218,13 +222,13 @@ async def test_tc_k_55():
     # Validate step 9
     assert profile2['evse_id'] == EVSE_ID
     p2 = profile2['charging_profile']
-    purpose2 = p2.get('charging_profile_purpose') or p2.get('chargingProfilePurpose')
+    purpose2 = get_field(p2, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose2 in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile)
-    tx_id2 = p2.get('transaction_id') or p2.get('transactionId')
+    tx_id2 = get_field(p2, 'transaction_id', 'transactionId')
     assert tx_id2 == transaction_id
 
     # Step 11: Send NotifyEVChargingScheduleRequest with schedule from step 9
-    schedules2 = p2.get('charging_schedule') or p2.get('chargingSchedule')
+    schedules2 = get_field(p2, 'charging_schedule', 'chargingSchedule')
     schedule2 = schedules2[0] if isinstance(schedules2, list) else schedules2
 
     notify_schedule2_payload = call.NotifyEVChargingSchedule(

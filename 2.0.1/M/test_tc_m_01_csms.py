@@ -44,6 +44,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -79,11 +80,19 @@ async def test_tc_m_01():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Step 1: Wait for CSMS to send InstallCertificateRequest
+    # Step 1: Trigger CSMS to send InstallCertificateRequest
+    async def trigger_install_cert():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "InstallCertificate", {
+            "certificateType": "CSMSRootCertificate",
+            "certificate": "MIICaTCCAdKgAwIBAgIUXzo...",
+        })
+    trigger_task = asyncio.create_task(trigger_install_cert())
     await asyncio.wait_for(
         cp._received_install_certificate.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate InstallCertificateRequest content
     assert cp._install_certificate_data is not None

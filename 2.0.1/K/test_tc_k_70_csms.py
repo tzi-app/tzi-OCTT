@@ -45,6 +45,8 @@ from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import send_call
+from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(level=logging.INFO)
 
@@ -113,12 +115,67 @@ async def test_tc_k_70():
                                   transaction_id=transaction_id)
 
     # Wait for both SetChargingProfileRequests
+    now = datetime.now(timezone.utc)
+    schedule_duration = 3600
+    async def trigger_set_profiles():
+        await asyncio.sleep(1)
+        # First: TxDefaultProfile
+        await send_call(cp_id, "SetChargingProfile", {
+            "evseId": EVSE_ID,
+            "chargingProfile": {
+                "id": 1,
+                "stackLevel": 0,
+                "chargingProfilePurpose": "TxDefaultProfile",
+                "chargingProfileKind": "Absolute",
+                "validFrom": now.isoformat(),
+                "validTo": (now + timedelta(seconds=schedule_duration)).isoformat(),
+                "chargingSchedule": [{
+                    "id": 1,
+                    "startSchedule": now.isoformat(),
+                    "chargingRateUnit": "A",
+                    "duration": schedule_duration,
+                    "chargingSchedulePeriod": [{
+                        "startPeriod": 0,
+                        "limit": 6.0,
+                    }],
+                }],
+            },
+        })
+        await asyncio.sleep(1)
+        # Second: ChargingStationMaxProfile
+        await send_call(cp_id, "SetChargingProfile", {
+            "evseId": 0,
+            "chargingProfile": {
+                "id": 2,
+                "stackLevel": 0,
+                "chargingProfilePurpose": "ChargingStationMaxProfile",
+                "chargingProfileKind": "Absolute",
+                "validFrom": now.isoformat(),
+                "validTo": (now + timedelta(seconds=schedule_duration)).isoformat(),
+                "chargingSchedule": [{
+                    "id": 2,
+                    "startSchedule": now.isoformat(),
+                    "chargingRateUnit": "A",
+                    "duration": schedule_duration,
+                    "chargingSchedulePeriod": [{
+                        "startPeriod": 0,
+                        "limit": 8.0,
+                    }],
+                }],
+            },
+        })
+    trigger_task = asyncio.create_task(trigger_set_profiles())
     await asyncio.wait_for(
         cp._all_profiles_received.wait(),
         timeout=CSMS_ACTION_TIMEOUT * 2,
     )
+    trigger_task.cancel()
 
     assert len(cp._set_charging_profile_requests) >= 2
+
+    def get_field(d, snake, camel):
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
 
     # Validate both profiles against tool validation requirements
     profile1 = cp._set_charging_profile_requests[0]['charging_profile']
@@ -126,22 +183,22 @@ async def test_tc_k_70():
 
     id1 = profile1.get('id')
     id2 = profile2.get('id')
-    stack1 = profile1.get('stack_level') or profile1.get('stackLevel')
-    stack2 = profile2.get('stack_level') or profile2.get('stackLevel')
-    purpose1 = profile1.get('charging_profile_purpose') or profile1.get('chargingProfilePurpose')
-    purpose2 = profile2.get('charging_profile_purpose') or profile2.get('chargingProfilePurpose')
-    kind1 = profile1.get('charging_profile_kind') or profile1.get('chargingProfileKind')
-    kind2 = profile2.get('charging_profile_kind') or profile2.get('chargingProfileKind')
+    stack1 = get_field(profile1, 'stack_level', 'stackLevel')
+    stack2 = get_field(profile2, 'stack_level', 'stackLevel')
+    purpose1 = get_field(profile1, 'charging_profile_purpose', 'chargingProfilePurpose')
+    purpose2 = get_field(profile2, 'charging_profile_purpose', 'chargingProfilePurpose')
+    kind1 = get_field(profile1, 'charging_profile_kind', 'chargingProfileKind')
+    kind2 = get_field(profile2, 'charging_profile_kind', 'chargingProfileKind')
 
-    schedules1 = profile1.get('charging_schedule') or profile1.get('chargingSchedule')
-    schedules2 = profile2.get('charging_schedule') or profile2.get('chargingSchedule')
+    schedules1 = get_field(profile1, 'charging_schedule', 'chargingSchedule')
+    schedules2 = get_field(profile2, 'charging_schedule', 'chargingSchedule')
     schedule1 = schedules1[0] if isinstance(schedules1, list) and schedules1 else schedules1
     schedule2 = schedules2[0] if isinstance(schedules2, list) and schedules2 else schedules2
     assert schedule1 is not None, "Expected first profile chargingSchedule to be present"
     assert schedule2 is not None, "Expected second profile chargingSchedule to be present"
-    start_schedule1 = schedule1.get('start_schedule') or schedule1.get('startSchedule')
-    start_schedule2 = schedule2.get('start_schedule') or schedule2.get('startSchedule')
-    recurrency1 = profile1.get('recurrency_kind') or profile1.get('recurrencyKind')
+    start_schedule1 = get_field(schedule1, 'start_schedule', 'startSchedule')
+    start_schedule2 = get_field(schedule2, 'start_schedule', 'startSchedule')
+    recurrency1 = get_field(profile1, 'recurrency_kind', 'recurrencyKind')
 
     assert purpose1 in ('TxDefaultProfile', ChargingProfilePurposeEnumType.tx_default_profile), \
         f"Expected first purpose=TxDefaultProfile, got {purpose1}"
@@ -162,7 +219,7 @@ async def test_tc_k_70():
     # K01.FR.31 compliance: startPeriod of first chargingSchedulePeriod SHALL always be 0
     # (The received Charging Profiles must comply with the requirements defined at part 2 specification)
     for idx, schedule in enumerate([schedule1, schedule2], 1):
-        periods = schedule.get('charging_schedule_period') or schedule.get('chargingSchedulePeriod')
+        periods = get_field(schedule, 'charging_schedule_period', 'chargingSchedulePeriod')
         assert periods is not None and len(periods) > 0, \
             f"Profile {idx}: chargingSchedulePeriod must be present"
         first_period = periods[0]

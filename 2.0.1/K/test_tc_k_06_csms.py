@@ -47,6 +47,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -102,10 +103,22 @@ async def test_tc_k_06():
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
     # Wait for CSMS to send ClearChargingProfileRequest
+    async def trigger_clear_profile():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "ClearChargingProfile", {
+            "chargingProfileCriteria": {
+                "chargingProfilePurpose": "TxDefaultProfile",
+                "evseId": EVSE_ID,
+                "stackLevel": 0,
+            },
+        })
+    trigger_task = asyncio.create_task(trigger_clear_profile())
+
     await asyncio.wait_for(
         cp._received_clear_charging_profile.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     assert cp._clear_charging_profile_data is not None
     req_data = cp._clear_charging_profile_data
@@ -113,21 +126,26 @@ async def test_tc_k_06():
 
     assert criteria is not None, "chargingProfileCriteria must be present"
 
+    def get_field(d, snake, camel):
+        """Get field by snake_case key, falling back to camelCase."""
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
     # chargingProfileId must be omitted
     assert req_data['charging_profile_id'] is None, \
         f"Expected chargingProfileId to be omitted, got {req_data['charging_profile_id']}"
 
     # chargingProfilePurpose must be TxDefaultProfile
-    purpose = criteria.get('charging_profile_purpose') or criteria.get('chargingProfilePurpose')
+    purpose = get_field(criteria, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose in ('TxDefaultProfile', ChargingProfilePurposeEnumType.tx_default_profile), \
         f"Expected purpose=TxDefaultProfile, got {purpose}"
 
     # stackLevel must be present
-    stack_level = criteria.get('stack_level') or criteria.get('stackLevel')
+    stack_level = get_field(criteria, 'stack_level', 'stackLevel')
     assert stack_level is not None, "stackLevel must be present"
 
     # evseId must be configured evseId
-    evse_id = criteria.get('evse_id') or criteria.get('evseId')
+    evse_id = get_field(criteria, 'evse_id', 'evseId')
     assert evse_id == EVSE_ID, f"Expected evseId={EVSE_ID}, got {evse_id}"
 
     logging.info("TC_K_06 completed successfully")

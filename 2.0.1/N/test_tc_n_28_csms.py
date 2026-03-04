@@ -54,6 +54,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -90,6 +91,14 @@ async def test_tc_n_28():
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
+
+    # Trigger CSMS to send CustomerInformationRequest
+    await send_call(cp_id, "CustomerInformation", {
+        "requestId": 1,
+        "report": True,
+        "clear": False,
+        "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+    })
 
     # Step 1-2: Wait for CSMS to send CustomerInformationRequest
     await asyncio.wait_for(

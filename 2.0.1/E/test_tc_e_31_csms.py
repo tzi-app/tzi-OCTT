@@ -126,6 +126,9 @@ async def test_tc_e_31():
         cp._get_transaction_status_messages_in_queue = True
         start_task = asyncio.create_task(cp.start())
 
+        # Drain CSMS-initiated messages after reconnection
+        await cp.drain_post_boot()
+
         # Step 3-4: StatusNotificationRequest Available
         status_response = await cp.send_status_notification(connector_id=CONNECTOR_ID, status=ConnectorStatusType.available)
         assert status_response is not None

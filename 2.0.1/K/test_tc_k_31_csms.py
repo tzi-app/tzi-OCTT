@@ -43,6 +43,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -98,10 +99,16 @@ async def test_tc_k_31():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    async def trigger_get_profiles():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "GetChargingProfiles", {"requestId": 1, "chargingProfile": {"chargingProfilePurpose": "TxDefaultProfile"}})
+    trigger_task = asyncio.create_task(trigger_get_profiles())
+
     await asyncio.wait_for(
         cp._received_get_charging_profiles.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     assert cp._get_charging_profiles_data is not None
     req_data = cp._get_charging_profiles_data

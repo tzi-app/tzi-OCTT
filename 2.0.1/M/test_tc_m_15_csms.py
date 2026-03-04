@@ -49,6 +49,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -100,11 +101,18 @@ async def test_tc_m_15():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Step 1: Wait for CSMS to send GetInstalledCertificateIdsRequest
+    # Step 1: Trigger CSMS to send GetInstalledCertificateIdsRequest
+    async def trigger_get_certs():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "GetInstalledCertificateIds", {
+            "certificateType": ["V2GCertificateChain"],
+        })
+    trigger_task = asyncio.create_task(trigger_get_certs())
     await asyncio.wait_for(
         cp._received_get_installed_certificate_ids.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate request content
     assert cp._get_installed_certificate_ids_data is not None

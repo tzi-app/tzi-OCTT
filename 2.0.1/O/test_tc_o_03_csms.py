@@ -46,6 +46,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -83,6 +84,9 @@ async def test_tc_o_03():
 
     # No display messages configured - respond with Unknown
     cp._get_display_messages_response_status = GetDisplayMessagesStatusEnumType.unknown
+
+    # Trigger CSMS to send GetDisplayMessagesRequest
+    await send_call(cp_id, "GetDisplayMessages", {"requestId": 1})
 
     # Step 1-2: Wait for CSMS to send GetDisplayMessagesRequest
     await asyncio.wait_for(

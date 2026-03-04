@@ -57,6 +57,7 @@ from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 from reusable_states.ev_disconnected import ev_disconnected
 from utils import get_basic_auth_headers, generate_transaction_id, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -101,6 +102,12 @@ async def test_tc_o_06():
                      transaction_id=transaction_id, evse_id=EVSE_ID, connector_id=CONNECTOR_ID)
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
+
+    # Trigger CSMS to send SetDisplayMessageRequest for transaction
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": 1, "priority": "NormalCycle", "transactionId": transaction_id,
+        "message": {"format": "UTF8", "content": "Transaction message"},
+    }})
 
     # Step 1-2: Wait for CSMS to send SetDisplayMessageRequest
     await asyncio.wait_for(

@@ -59,6 +59,7 @@ from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType, EVSE
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -108,10 +109,23 @@ async def test_tc_h_14():
         if request_index > 0:
             cp._received_reserve_now.clear()
 
+        async def trigger_reserve_now(idx=request_index):
+            await asyncio.sleep(1)
+            from datetime import datetime, timezone, timedelta
+            expiry = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
+            await send_call(BASIC_AUTH_CP, "ReserveNow", {
+                "id": idx + 1,
+                "expiryDateTime": expiry,
+                "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+            })
+
+        trigger_task = asyncio.create_task(trigger_reserve_now())
+
         await asyncio.wait_for(
             cp._received_reserve_now.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        trigger_task.cancel()
 
         # Validate ReserveNowRequest content
         assert cp._reserve_now_data is not None

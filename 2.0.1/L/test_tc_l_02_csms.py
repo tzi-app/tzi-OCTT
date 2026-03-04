@@ -61,6 +61,8 @@ from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
+from datetime import timedelta, timezone
 
 logging.basicConfig(level=logging.INFO)
 
@@ -97,11 +99,26 @@ async def test_tc_l_02():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for CSMS to send UpdateFirmwareRequest
+    # Step 1-2: Trigger CSMS to send UpdateFirmwareRequest with future installDateTime
+    future_install = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+    async def trigger_update_firmware():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "UpdateFirmware", {
+            "requestId": 1,
+            "firmware": {
+                "location": "https://example.com/firmware-v2.0.bin",
+                "retrieveDateTime": now_iso(),
+                "installDateTime": future_install,
+                "signingCertificate": "MIICaTCCAdKgAwIBAgIUXzo...",
+                "signature": "MEUCIQC7p...",
+            },
+        })
+    trigger_task = asyncio.create_task(trigger_update_firmware())
     await asyncio.wait_for(
         cp._received_update_firmware.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate UpdateFirmwareRequest content
     assert cp._update_firmware_data is not None

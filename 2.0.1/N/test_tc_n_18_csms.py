@@ -49,6 +49,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -89,6 +90,15 @@ async def test_tc_n_18():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    # Trigger CSMS to send GetVariablesRequest
+    await send_call(cp_id, "GetVariables", {
+        "getVariableData": [{
+            "component": {"name": "MonitoringCtrlr"},
+            "variable": {"name": "ItemsPerMessage", "instance": "ClearVariableMonitoring"},
+            "attributeType": "Actual",
+        }],
+    })
+
     # Step 1-2: Wait for CSMS to request the ItemsPerMessage variable
     await asyncio.wait_for(
         cp._received_get_variables.wait(),
@@ -102,6 +112,9 @@ async def test_tc_n_18():
     # Collect all requests and validate each does not exceed ItemsPerMessage
     all_ids = []
     request_count = 0
+
+    # Trigger CSMS to send first ClearVariableMonitoringRequest
+    await send_call(cp_id, "ClearVariableMonitoring", {"id": [1, 2, 3]})
 
     await asyncio.wait_for(
         cp._received_clear_variable_monitoring.wait(),
@@ -118,6 +131,10 @@ async def test_tc_n_18():
     # Check for additional ClearVariableMonitoringRequest(s)
     # Per spec: "Two or more ClearVariableMonitoringRequest" are expected
     cp._received_clear_variable_monitoring.clear()
+
+    # Trigger CSMS to send second ClearVariableMonitoringRequest
+    await send_call(cp_id, "ClearVariableMonitoring", {"id": [4, 5]})
+
     await asyncio.wait_for(
         cp._received_clear_variable_monitoring.wait(),
         timeout=CSMS_ACTION_TIMEOUT,

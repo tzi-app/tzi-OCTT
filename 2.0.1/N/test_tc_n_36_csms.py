@@ -57,6 +57,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -92,6 +93,13 @@ async def test_tc_n_36():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    # Trigger CSMS to send first GetLogRequest
+    await send_call(cp_id, "GetLog", {
+        "logType": "DiagnosticsLog",
+        "requestId": 1,
+        "log": {"remoteLocation": "https://example.com/logs"},
+    })
+
     # Step 1-2: Wait for CSMS to send first GetLogRequest
     await asyncio.wait_for(
         cp._received_get_log.wait(),
@@ -114,6 +122,13 @@ async def test_tc_n_36():
     # Prepare for second GetLogRequest: respond with AcceptedCanceled
     cp._received_get_log.clear()
     cp._get_log_response_status = LogStatusEnumType.accepted_canceled
+
+    # Trigger CSMS to send second GetLogRequest
+    await send_call(cp_id, "GetLog", {
+        "logType": "DiagnosticsLog",
+        "requestId": 2,
+        "log": {"remoteLocation": "https://example.com/logs"},
+    })
 
     # Step 5-6: Wait for CSMS to send second GetLogRequest
     await asyncio.wait_for(

@@ -232,6 +232,36 @@ pytest --collect-only -q
 ```
 
 
+## OCSP Responder Validation
+
+Several tests verify that the CSMS correctly validates certificate status via OCSP (RFC 6960). In these scenarios the Charging Station sends an `AuthorizeRequest` or `GetCertificateStatusRequest` that includes certificate hash data and/or a `responderURL`. The CSMS is then expected to connect to that URL, POST an OCSP request, and use the response to decide whether the certificate is valid or revoked.
+
+Since there is no real CA or OCSP infrastructure in the test environment, each test that requires OCSP validation **spawns a local mock OCSP responder** (`mock_ocsp_responder.py`) before the scenario begins and tears it down afterward. The responder is a lightweight HTTP server (stdlib `http.server`) that returns a fixed DER-encoded OCSP response with a configurable `certStatus` (`good`, `revoked`, or `unknown`).
+
+### How it works
+
+1. **Test starts** the mock responder on a dedicated port with a pre-configured status.
+2. **CS sends** an OCPP request to the CSMS containing either:
+   - `iso15118CertificateHashData` with explicit hash values and a `responderURL` pointing to the mock (TC_C_50, TC_C_51), or
+   - A full PEM certificate whose AIA extension embeds the mock's URL (TC_C_52), or
+   - `ocspRequestData` with hash values and a `responderURL` (TC_M_24).
+3. **CSMS connects** to the `responderURL`, builds an RFC 6960 OCSP request from the hash data, and POSTs it.
+4. **Mock responder** replies with a minimal but structurally valid OCSP response (the configured status).
+5. **Test asserts** that the CSMS made the OCSP request (via a request counter) and returned the correct authorization/certificate status.
+
+### Tests using the mock OCSP responder
+
+| Test | Block | Port | certStatus | Scenario |
+|------|-------|------|------------|----------|
+| TC_C_50 | C (Authorization) | 19080 | `good` | CS provides hash data + responderURL; CSMS accepts valid certificate |
+| TC_C_51 | C (Authorization) | 19081 | `revoked` | CS provides hash data + responderURL; CSMS rejects revoked certificate |
+| TC_C_52 | C (Authorization) | 19082 | `good` | CS provides full certificate (AIA extension has OCSP URL); CSMS extracts hashes, queries OCSP, accepts |
+| TC_M_24 | M (Certificate Mgmt) | 19080 | `good` | CS sends `GetCertificateStatusRequest`; CSMS queries OCSP and returns `ocspResult` |
+
+### Network requirements
+
+The CSMS under test must be able to reach `localhost` on ports **19080–19082** (HTTP). If the CSMS runs in a container or on a remote host, ensure these ports are forwarded or accessible. No TLS is used for the OCSP endpoint — the mock serves plain HTTP only.
+
 ## CSMS Simulator
 
 [csms.py](2.0.1/csms.py) provides a minimal in-memory CSMS for validating test behavior locally. It is not intended for production use.

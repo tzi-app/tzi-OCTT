@@ -78,9 +78,11 @@ async def test_tc_e_30(connection):
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
 
+    # Drain CSMS-initiated messages (stale transaction checks from DB)
+    await cp.drain_post_boot()
+
     # Step 1-2: Trigger CSMS to send GetTransactionStatusRequest
     async def trigger_get_status():
-        await asyncio.sleep(1)
         await send_call(BASIC_AUTH_CP, "GetTransactionStatus",
                         {"transactionId": transaction_id})
 

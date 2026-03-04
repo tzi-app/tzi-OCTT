@@ -46,6 +46,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -80,6 +81,12 @@ async def test_tc_o_25():
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
+
+    # Trigger CSMS to send SetDisplayMessageRequest with Charging state
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": 1, "priority": "NormalCycle", "state": "Charging",
+        "message": {"format": "UTF8", "content": "Charging message"},
+    }})
 
     # Step 1-2: Wait for CSMS to send SetDisplayMessageRequest
     await asyncio.wait_for(

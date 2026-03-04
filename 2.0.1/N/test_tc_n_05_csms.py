@@ -55,6 +55,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -97,8 +98,18 @@ async def test_tc_n_05():
         MonitorBaseEnumType.factory_default,
         MonitorBaseEnumType.hard_wired_only,
     ]
+    monitoring_base_names = {
+        MonitorBaseEnumType.all: "All",
+        MonitorBaseEnumType.factory_default: "FactoryDefault",
+        MonitorBaseEnumType.hard_wired_only: "HardWiredOnly",
+    }
 
     for i, expected_base in enumerate(monitoring_bases):
+        # Trigger CSMS to send SetMonitoringBaseRequest
+        await send_call(cp_id, "SetMonitoringBase", {
+            "monitoringBase": monitoring_base_names[expected_base],
+        })
+
         # Wait for CSMS to send SetMonitoringBaseRequest
         await asyncio.wait_for(
             cp._received_set_monitoring_base.wait(),

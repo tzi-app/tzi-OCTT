@@ -46,6 +46,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -55,6 +56,8 @@ BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
+VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
+VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
 
 
 @pytest.mark.asyncio
@@ -84,11 +87,25 @@ async def test_tc_h_22():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available, evse_id=EVSE_ID)
 
-    # Step 1-2: Wait for CSMS to send ReserveNowRequest
+    # Step 1-2: Trigger CSMS to send ReserveNowRequest
+    async def trigger_reserve_now():
+        await asyncio.sleep(1)
+        from datetime import datetime, timezone, timedelta
+        expiry = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
+        await send_call(BASIC_AUTH_CP, "ReserveNow", {
+            "id": 1,
+            "expiryDateTime": expiry,
+            "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+            "evseId": EVSE_ID,
+        })
+
+    trigger_task = asyncio.create_task(trigger_reserve_now())
+
     await asyncio.wait_for(
         cp._received_reserve_now.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # CS responded with Rejected (configured before start)
     assert cp._reserve_now_data is not None

@@ -281,7 +281,20 @@ class TziChargePoint(ChargePoint):
                     pass
             raise
 
-    async def send_boot_notification(self):
+    async def drain_post_boot(self, delay=1.0):
+        """Wait for CSMS post-boot initialization messages to arrive, then clear
+        all event flags and captured data so tests only see their own triggered
+        messages.  The CSMS may send SetVariables (tariff config), ReserveNow
+        (active reservations), GetTransactionStatus, etc. after accepting a boot.
+        """
+        await asyncio.sleep(delay)
+        for attr in list(vars(self)):
+            if attr.startswith('_received_') and isinstance(getattr(self, attr), asyncio.Event):
+                getattr(self, attr).clear()
+            elif attr.endswith('_data') and attr.startswith('_') and not callable(getattr(self, attr)):
+                setattr(self, attr, None)
+
+    async def send_boot_notification(self, drain=True):
         payload = call.BootNotification(
             charging_station={
                 'model': 'CP Model 1.0',
@@ -290,9 +303,11 @@ class TziChargePoint(ChargePoint):
             reason="PowerUp"
         )
         response = await self.call(payload)
+        if drain and hasattr(response, 'status') and response.status == 'Accepted':
+            await self.drain_post_boot()
         return response
 
-    async def send_boot_notification_with_serial(self, serial_number):
+    async def send_boot_notification_with_serial(self, serial_number, drain=True):
         payload = call.BootNotification(
             charging_station={
                 'model': 'CP Model 1.0',
@@ -302,6 +317,8 @@ class TziChargePoint(ChargePoint):
             reason="PowerUp"
         )
         response = await self.call(payload)
+        if drain and hasattr(response, 'status') and response.status == 'Accepted':
+            await self.drain_post_boot()
         return response
 
     async def send_status_notification(self, connector_id, status, evse_id=1):
@@ -364,7 +381,7 @@ class TziChargePoint(ChargePoint):
         response = await self.call(payload)
         return response
 
-    async def send_boot_notification_with_reason(self, reason):
+    async def send_boot_notification_with_reason(self, reason, drain=True):
         payload = call.BootNotification(
             charging_station={
                 'model': 'CP Model 1.0',
@@ -373,6 +390,8 @@ class TziChargePoint(ChargePoint):
             reason=reason
         )
         response = await self.call(payload)
+        if drain and hasattr(response, 'status') and response.status == 'Accepted':
+            await self.drain_post_boot()
         return response
 
     async def send_notify_report(self, request_id, seq_no, report_data, tbc=False):

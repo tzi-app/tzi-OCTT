@@ -56,6 +56,7 @@ from tzi_charge_point import TziChargePoint
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 from utils import get_basic_auth_headers, generate_transaction_id, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -100,6 +101,13 @@ async def test_tc_o_28():
                      transaction_id=transaction_id, evse_id=EVSE_ID, connector_id=CONNECTOR_ID)
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
+
+    # Trigger CSMS to send SetDisplayMessageRequest with transactionId + endTime
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": 1, "priority": "NormalCycle", "transactionId": transaction_id,
+        "endDateTime": "2026-03-04T18:00:00Z",
+        "message": {"format": "UTF8", "content": "Expiring transaction message"},
+    }})
 
     # Step 1-2: Wait for CSMS to send SetDisplayMessageRequest
     await asyncio.wait_for(

@@ -63,6 +63,7 @@ from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -139,11 +140,24 @@ async def test_tc_l_11():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for first UpdateFirmwareRequest
+    # Step 1-2: Trigger first UpdateFirmwareRequest
+    async def trigger_first():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "UpdateFirmware", {
+            "requestId": 1,
+            "firmware": {
+                "location": "https://example.com/firmware-v1.0.bin",
+                "retrieveDateTime": now_iso(),
+                "signingCertificate": "MIICaTCCAdKgAwIBAgIUXzo...",
+                "signature": "MEUCIQC7p...",
+            },
+        })
+    trigger_task1 = asyncio.create_task(trigger_first())
     await asyncio.wait_for(
         cp._received_update_firmware.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task1.cancel()
     assert cp._update_firmware_data is not None
 
     # Step 3: First firmware starts downloading
@@ -152,11 +166,24 @@ async def test_tc_l_11():
     )
     assert resp is not None
 
-    # Step 5-6: Wait for second UpdateFirmwareRequest
+    # Step 5-6: Trigger second UpdateFirmwareRequest
+    async def trigger_second():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "UpdateFirmware", {
+            "requestId": 2,
+            "firmware": {
+                "location": "https://example.com/firmware-v2.0.bin",
+                "retrieveDateTime": now_iso(),
+                "signingCertificate": "MIICaTCCAdKgAwIBAgIUXzo...",
+                "signature": "MEUCIQC7p...",
+            },
+        })
+    trigger_task2 = asyncio.create_task(trigger_second())
     await asyncio.wait_for(
         cp._received_second_update_firmware.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task2.cancel()
     assert cp._second_update_firmware_data is not None
 
     # CS responded with Rejected (cannot cancel first)

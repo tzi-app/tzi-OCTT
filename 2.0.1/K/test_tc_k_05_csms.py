@@ -51,6 +51,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -122,10 +123,22 @@ async def test_tc_k_05():
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
     # Memory State: Wait for CSMS to send GetChargingProfilesRequest
+    async def trigger_get_profiles():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "GetChargingProfiles", {
+            "requestId": 1,
+            "chargingProfile": {
+                "chargingProfilePurpose": "TxDefaultProfile",
+            },
+            "evseId": EVSE_ID,
+        })
+    trigger_task1 = asyncio.create_task(trigger_get_profiles())
+
     await asyncio.wait_for(
         cp._received_get_charging_profiles.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task1.cancel()
 
     # Send ReportChargingProfilesRequest back to CSMS
     request_id = cp._get_charging_profiles_data['request_id']
@@ -148,10 +161,18 @@ async def test_tc_k_05():
     await cp.call(report_payload)
 
     # Main: Wait for CSMS to send ClearChargingProfileRequest
+    async def trigger_clear_profile():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "ClearChargingProfile", {
+            "chargingProfileId": cp._charging_profile_id,
+        })
+    trigger_task2 = asyncio.create_task(trigger_clear_profile())
+
     await asyncio.wait_for(
         cp._received_clear_charging_profile.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task2.cancel()
 
     assert cp._clear_charging_profile_data is not None
     req_data = cp._clear_charging_profile_data

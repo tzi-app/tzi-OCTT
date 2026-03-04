@@ -58,9 +58,11 @@ async def test_tc_e_34(connection):
     cp._get_transaction_status_messages_in_queue = False
     start_task = asyncio.create_task(cp.start())
 
+    # Drain CSMS-initiated messages (stale transaction checks from DB)
+    await cp.drain_post_boot()
+
     # Step 1-2: Trigger CSMS to send GetTransactionStatusRequest (no transactionId)
     async def trigger_get_status():
-        await asyncio.sleep(1)
         await send_call(BASIC_AUTH_CP, "GetTransactionStatus", {})
 
     trigger_task = asyncio.create_task(trigger_get_status())

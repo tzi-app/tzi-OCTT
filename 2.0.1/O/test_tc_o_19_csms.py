@@ -47,6 +47,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -84,6 +85,12 @@ async def test_tc_o_19():
 
     # Respond with NotSupportedMessageFormat
     cp._set_display_message_response_status = DisplayMessageStatusEnumType.not_supported_message_format
+
+    # Trigger CSMS to send SetDisplayMessageRequest
+    await send_call(cp_id, "SetDisplayMessage", {"message": {
+        "id": 1, "priority": "NormalCycle",
+        "message": {"format": "URI", "content": "https://example.com/msg"},
+    }})
 
     # Step 1-2: Wait for CSMS to send SetDisplayMessageRequest
     await asyncio.wait_for(

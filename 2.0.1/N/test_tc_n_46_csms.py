@@ -68,6 +68,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -110,6 +111,14 @@ async def test_tc_n_46():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    # Trigger CSMS to send CustomerInformationRequest
+    await send_call(cp_id, "CustomerInformation", {
+        "requestId": 1,
+        "report": True,
+        "clear": True,
+        "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+    })
+
     # Step 1-2: Wait for CSMS to send CustomerInformationRequest
     await asyncio.wait_for(
         cp._received_customer_information.wait(),
@@ -143,6 +152,15 @@ async def test_tc_n_46():
     )
 
     logging.info("TC_N_46 step 3-4 completed: NotifyCustomerInformation sent")
+
+    # Trigger CSMS to send SendLocalListRequest
+    await send_call(cp_id, "SendLocalList", {
+        "versionNumber": LOCAL_LIST_VERSION + 1,
+        "updateType": "Differential",
+        "localAuthorizationList": [{
+            "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+        }],
+    })
 
     # Step 5-6: Wait for CSMS to send SendLocalListRequest
     await asyncio.wait_for(

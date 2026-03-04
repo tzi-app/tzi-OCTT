@@ -64,6 +64,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -103,6 +104,13 @@ async def test_tc_n_03():
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
+
+    # Trigger CSMS to send GetMonitoringReportRequest (DeltaMonitoring + EVSE/AvailabilityState)
+    await send_call(cp_id, "GetMonitoringReport", {
+        "requestId": 1,
+        "monitoringCriteria": ["DeltaMonitoring"],
+        "componentVariable": [{"component": {"name": "EVSE", "evse": {"id": CONFIGURED_EVSE_ID}}, "variable": {"name": "AvailabilityState"}}],
+    })
 
     # Step 1-2: Wait for CSMS to send GetMonitoringReportRequest (DeltaMonitoring + EVSE/AvailabilityState)
     await asyncio.wait_for(
@@ -144,6 +152,13 @@ async def test_tc_n_03():
     # Reset for next request
     cp._received_get_monitoring_report.clear()
     cp._get_monitoring_report_response_status = GenericDeviceModelStatusEnumType.accepted
+
+    # Trigger CSMS to send GetMonitoringReportRequest (ThresholdMonitoring + ChargingStation/Power)
+    await send_call(cp_id, "GetMonitoringReport", {
+        "requestId": 2,
+        "monitoringCriteria": ["ThresholdMonitoring"],
+        "componentVariable": [{"component": {"name": "ChargingStation"}, "variable": {"name": "Power"}}],
+    })
 
     # Step 3-4: Wait for CSMS to send GetMonitoringReportRequest (ThresholdMonitoring + ChargingStation/Power)
     await asyncio.wait_for(

@@ -36,6 +36,7 @@ from ocpp.v201.enums import (
 )
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -80,7 +81,7 @@ async def test_tc_k_44():
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
     ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -90,7 +91,17 @@ async def test_tc_k_44():
     assert boot_response.status == RegistrationStatusEnumType.accepted
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    async def trigger_get_schedule():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "GetCompositeSchedule", {
+            "duration": 300,
+            "chargingRateUnit": "A",
+            "evseId": 0,
+        })
+    trigger_task = asyncio.create_task(trigger_get_schedule())
+
     await asyncio.wait_for(cp._received_get_composite_schedule.wait(), timeout=CSMS_ACTION_TIMEOUT)
+    trigger_task.cancel()
 
     req_data = cp._get_composite_schedule_data
     assert req_data['evse_id'] == 0, f"Expected evseId=0, got {req_data['evse_id']}"
