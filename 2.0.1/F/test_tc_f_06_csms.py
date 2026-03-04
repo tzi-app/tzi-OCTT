@@ -50,6 +50,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -86,11 +87,21 @@ async def test_tc_f_06():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available, evse_id=EVSE_ID)
 
-    # Step 1-2: Wait for CSMS to send UnlockConnectorRequest
+    # Step 1-2: Trigger CSMS to send UnlockConnectorRequest
+    async def trigger_unlock():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "UnlockConnector", {
+            "evseId": EVSE_ID,
+            "connectorId": CONNECTOR_ID,
+        })
+
+    trigger_task = asyncio.create_task(trigger_unlock())
+
     await asyncio.wait_for(
         cp._received_unlock_connector.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate Step 1: UnlockConnectorRequest content
     assert cp._unlock_connector_data is not None

@@ -61,6 +61,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
@@ -124,11 +125,21 @@ async def test_tc_f_24():
     # Step 1-2: CS notifies CSMS about Occupied state
     await _send_occupied_status(cp, EVSE_ID, CONNECTOR_ID)
 
-    # Step 3-4: Wait for CSMS to send TriggerMessageRequest
+    # Step 3-4: Trigger CSMS to send TriggerMessageRequest
+    async def trigger_msg():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "TriggerMessage", {
+            "requestedMessage": "StatusNotification",
+            "evse": {"id": EVSE_ID},
+        })
+
+    trigger_task = asyncio.create_task(trigger_msg())
+
     await asyncio.wait_for(
         cp._received_trigger_message.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate Step 3: TriggerMessageRequest content
     assert cp._trigger_message_data == MessageTriggerEnumType.status_notification or \

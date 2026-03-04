@@ -90,12 +90,12 @@ async def test_tc_m_20():
         uri = f'{CSMS_ADDRESS}/{cp_id}'
         headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+        ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
         ws = await websockets.connect(
             uri=uri,
             subprotocols=['ocpp2.0.1'],
             extra_headers=headers,
-        ssl=ssl_ctx,
+            ssl=ssl_ctx,
         )
         time.sleep(0.5)
 

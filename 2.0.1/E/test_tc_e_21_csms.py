@@ -50,6 +50,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from trigger import send_call
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 
@@ -87,12 +88,19 @@ async def test_tc_e_21(connection):
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
 
-    # Step 1-2: Wait for CSMS to send RequestStopTransactionRequest
-    # Manual action required: trigger stop via CSMS UI/API
+    # Step 1-2: Trigger CSMS to send RequestStopTransactionRequest
+    async def trigger_remote_stop():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "RequestStopTransaction",
+                        {"transactionId": transaction_id})
+
+    trigger_task = asyncio.create_task(trigger_remote_stop())
+
     await asyncio.wait_for(
         cp._received_request_stop_transaction.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate the transactionId matches
     assert cp._request_stop_transaction_data is not None

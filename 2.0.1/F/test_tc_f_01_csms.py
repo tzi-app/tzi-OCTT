@@ -59,6 +59,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
+from trigger import send_call
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 
 logging.basicConfig(level=logging.INFO)
@@ -106,12 +107,22 @@ async def test_tc_f_01():
     # Configure handler to include transactionId in response (spec: transactionId = <Generated>)
     cp._request_start_transaction_response_transaction_id = transaction_id
 
-    # Step 1-2: Wait for CSMS to send RequestStartTransactionRequest
-    # Manual action: Trigger the CSMS to request the CS to start a transaction
+    # Step 1-2: Trigger CSMS to send RequestStartTransactionRequest
+    async def trigger_remote_start():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "RequestStartTransaction", {
+            "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+            "remoteStartId": 1,
+            "evseId": EVSE_ID,
+        })
+
+    trigger_task = asyncio.create_task(trigger_remote_start())
+
     await asyncio.wait_for(
         cp._received_request_start_transaction.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate Step 1: RequestStartTransactionRequest content
     assert cp._request_start_transaction_data is not None

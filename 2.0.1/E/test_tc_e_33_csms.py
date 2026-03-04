@@ -50,6 +50,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
+from trigger import send_call
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 
@@ -118,11 +119,18 @@ async def test_tc_e_33():
         cp._get_transaction_status_messages_in_queue = True
         start_task = asyncio.create_task(cp.start())
 
-        # Step 3-4: Wait for CSMS to send GetTransactionStatusRequest (no transactionId)
+        # Step 3-4: Trigger CSMS to send GetTransactionStatusRequest (no transactionId)
+        async def trigger_get_status():
+            await asyncio.sleep(1)
+            await send_call(BASIC_AUTH_CP, "GetTransactionStatus", {})
+
+        trigger_task = asyncio.create_task(trigger_get_status())
+
         await asyncio.wait_for(
             cp._received_get_transaction_status.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        trigger_task.cancel()
 
         # Validate transactionId is None/omitted in request
         assert cp._get_transaction_status_data is not None

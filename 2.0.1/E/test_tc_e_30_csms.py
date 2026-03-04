@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id
+from trigger import send_call
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 
@@ -77,11 +78,19 @@ async def test_tc_e_30(connection):
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
 
-    # Step 1-2: Wait for CSMS to send GetTransactionStatusRequest
+    # Step 1-2: Trigger CSMS to send GetTransactionStatusRequest
+    async def trigger_get_status():
+        await asyncio.sleep(1)
+        await send_call(BASIC_AUTH_CP, "GetTransactionStatus",
+                        {"transactionId": transaction_id})
+
+    trigger_task = asyncio.create_task(trigger_get_status())
+
     await asyncio.wait_for(
         cp._received_get_transaction_status.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate transactionId in request
     assert cp._get_transaction_status_data is not None
