@@ -77,7 +77,7 @@ from reusable_states.ev_disconnected import ev_disconnected
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_G']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])

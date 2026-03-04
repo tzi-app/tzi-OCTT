@@ -52,7 +52,7 @@ from utils import get_basic_auth_headers
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 

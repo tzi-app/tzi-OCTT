@@ -66,7 +66,7 @@ from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']

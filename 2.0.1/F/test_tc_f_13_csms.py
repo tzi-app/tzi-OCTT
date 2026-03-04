@@ -69,7 +69,7 @@ from reusable_states.energy_transfer_started import energy_transfer_started
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_F']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
