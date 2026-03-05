@@ -63,12 +63,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
@@ -90,10 +91,12 @@ async def test_tc_m_20():
         uri = f'{CSMS_ADDRESS}/{cp_id}'
         headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+        ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
         ws = await websockets.connect(
             uri=uri,
             subprotocols=['ocpp2.0.1'],
             extra_headers=headers,
+            ssl=ssl_ctx,
         )
         time.sleep(0.5)
 
@@ -122,18 +125,33 @@ async def test_tc_m_20():
 
         await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-        # Step 1: Reusable State CertificateInstalled - Wait for InstallCertificateRequest
+        # Step 1: Trigger InstallCertificateRequest
+        async def trigger_install():
+            await asyncio.sleep(1)
+            await send_call(cp_id, "InstallCertificate", {
+                "certificateType": "CSMSRootCertificate",
+                "certificate": "MIICaTCCAdKgAwIBAgIUXzo...",
+            })
+        t1 = asyncio.create_task(trigger_install())
         await asyncio.wait_for(
             cp._received_install_certificate.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        t1.cancel()
         assert cp._install_certificate_data is not None
 
-        # Step 2: Wait for CSMS to send GetInstalledCertificateIdsRequest
+        # Step 2: Trigger GetInstalledCertificateIdsRequest
+        async def trigger_get_certs():
+            await asyncio.sleep(1)
+            await send_call(cp_id, "GetInstalledCertificateIds", {
+                "certificateType": ["CSMSRootCertificate"],
+            })
+        t2 = asyncio.create_task(trigger_get_certs())
         await asyncio.wait_for(
             cp._received_get_installed_certificate_ids.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        t2.cancel()
         assert cp._get_installed_certificate_ids_data is not None
 
         # Tool validation Step 2: certificateType contains CSMSRootCertificate OR is omitted
@@ -146,11 +164,25 @@ async def test_tc_m_20():
                 assert cert_type == GetCertificateIdUseEnumType.csms_root_certificate, \
                     f"Expected CSMSRootCertificate, got {cert_type}"
 
-        # Step 4: Wait for CSMS to send DeleteCertificateRequest
+        # Step 4: Trigger DeleteCertificateRequest with matching hash data
+        ha_str = str(hash_algo).replace('HashAlgorithmEnumType.', '')
+        ha_camel = {'sha256': 'SHA256', 'sha384': 'SHA384', 'sha512': 'SHA512'}.get(ha_str, ha_str)
+        async def trigger_delete():
+            await asyncio.sleep(1)
+            await send_call(cp_id, "DeleteCertificate", {
+                "certificateHashData": {
+                    "hashAlgorithm": ha_camel,
+                    "issuerNameHash": hash_data['issuer_name_hash'],
+                    "issuerKeyHash": hash_data['issuer_key_hash'],
+                    "serialNumber": hash_data['serial_number'],
+                },
+            })
+        t3 = asyncio.create_task(trigger_delete())
         await asyncio.wait_for(
             cp._received_delete_certificate.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        t3.cancel()
         assert cp._delete_certificate_data is not None
 
         # Tool validation Step 4: certificateHashData matches returned data from Step 3 (M04.FR.07)

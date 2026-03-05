@@ -56,14 +56,14 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 from reusable_states.authorized import authorized
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
@@ -100,7 +100,8 @@ async def test_tc_k_53():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -124,6 +125,12 @@ async def test_tc_k_53():
     notify_needs_payload = call.NotifyEVChargingNeeds(
         charging_needs={
             'requested_energy_transfer': EnergyTransferModeEnumType.ac_three_phase,
+            'ac_charging_parameters': {
+                'energy_amount': 50000,
+                'ev_min_current': 6,
+                'ev_max_current': 32,
+                'ev_max_voltage': 230,
+            },
         },
         evse_id=EVSE_ID,
         max_schedule_tuples=10,
@@ -148,7 +155,11 @@ async def test_tc_k_53():
     profile = cp._set_charging_profile_data['charging_profile']
 
     # Extract the charging schedule from the profile set by CSMS
-    schedules = profile.get('charging_schedule') or profile.get('chargingSchedule')
+    def get_field(d, snake, camel):
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
+    schedules = get_field(profile, 'charging_schedule', 'chargingSchedule')
     schedule = schedules[0] if isinstance(schedules, list) else schedules
 
     # Step 5: Send NotifyEVChargingScheduleRequest with the schedule from step 3

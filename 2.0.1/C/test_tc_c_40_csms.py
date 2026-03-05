@@ -76,7 +76,7 @@ from reusable_states.ev_connected_post_session import ev_connected_post_session
 from reusable_states.ev_disconnected import ev_disconnected
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, validate_schema
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_C']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 

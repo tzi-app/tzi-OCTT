@@ -63,12 +63,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
@@ -82,10 +83,12 @@ async def test_tc_n_03():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -101,6 +104,13 @@ async def test_tc_n_03():
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
+
+    # Trigger CSMS to send GetMonitoringReportRequest (DeltaMonitoring + EVSE/AvailabilityState)
+    await send_call(cp_id, "GetMonitoringReport", {
+        "requestId": 1,
+        "monitoringCriteria": ["DeltaMonitoring"],
+        "componentVariable": [{"component": {"name": "EVSE", "evse": {"id": CONFIGURED_EVSE_ID}}, "variable": {"name": "AvailabilityState"}}],
+    })
 
     # Step 1-2: Wait for CSMS to send GetMonitoringReportRequest (DeltaMonitoring + EVSE/AvailabilityState)
     await asyncio.wait_for(
@@ -142,6 +152,13 @@ async def test_tc_n_03():
     # Reset for next request
     cp._received_get_monitoring_report.clear()
     cp._get_monitoring_report_response_status = GenericDeviceModelStatusEnumType.accepted
+
+    # Trigger CSMS to send GetMonitoringReportRequest (ThresholdMonitoring + ChargingStation/Power)
+    await send_call(cp_id, "GetMonitoringReport", {
+        "requestId": 2,
+        "monitoringCriteria": ["ThresholdMonitoring"],
+        "componentVariable": [{"component": {"name": "ChargingStation"}, "variable": {"name": "Power"}}],
+    })
 
     # Step 3-4: Wait for CSMS to send GetMonitoringReportRequest (ThresholdMonitoring + ChargingStation/Power)
     await asyncio.wait_for(

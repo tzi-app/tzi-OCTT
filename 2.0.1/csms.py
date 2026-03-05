@@ -76,6 +76,8 @@ import ssl
 import base64
 import http
 import os
+import urllib.request
+import urllib.error
 from copy import deepcopy
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -292,6 +294,7 @@ MASTERPASS_GROUP_ID = _cfg_str('MASTERPASS_GROUP_ID')
 TOKEN_DATABASE = {
     '100000C01':       {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
     '100000C39B':      {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
+    'TAG-001':         {'status': 'Accepted', 'group': VALID_TOKEN_GROUP},
     '100000C02':       {'status': 'Invalid'},
     '100000C06':       {'status': 'Blocked'},
     '100000C07':       {'status': 'Expired'},
@@ -299,6 +302,7 @@ TOKEN_DATABASE = {
     'D001001':         {'status': 'Accepted'},
     'D001002':         {'status': 'Accepted'},
     'DE-TZI-C12345-A': {'status': 'Accepted'},
+    'EMAID001':        {'status': 'Accepted'},
 }
 
 
@@ -320,6 +324,97 @@ if _revoked_file and os.path.exists(_revoked_file):
         logging.info(f"Loaded {len(_REVOKED_SERIALS)} revoked serial(s) from {_revoked_file}")
     except Exception as _e:
         logging.warning(f"Failed to load revoked cert hash data: {_e}")
+
+
+# ─── OCSP Helpers ────────────────────────────────────────────────────────────
+
+def _parse_ocsp_response_status(der_data: bytes) -> str:
+    """Parse DER-encoded OCSP response to extract cert status."""
+
+    def _read_tlv(data, offset):
+        tag = data[offset]; offset += 1
+        length = data[offset]; offset += 1
+        if length & 0x80:
+            n = length & 0x7F
+            length = int.from_bytes(data[offset:offset + n], 'big')
+            offset += n
+        return tag, length, offset
+
+    try:
+        # OCSPResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, 0)
+        # responseStatus ENUMERATED
+        _, elen, pos = _read_tlv(der_data, pos)
+        if der_data[pos] != 0:
+            return 'unknown'
+        pos += elen
+        # [0] EXPLICIT responseBytes
+        _, _, pos = _read_tlv(der_data, pos)
+        # ResponseBytes SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # responseType OID — skip
+        _, olen, pos = _read_tlv(der_data, pos)
+        pos += olen
+        # response OCTET STRING
+        _, _, pos = _read_tlv(der_data, pos)
+        # BasicOCSPResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # tbsResponseData SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # responderID — skip
+        _, rlen, pos = _read_tlv(der_data, pos)
+        pos += rlen
+        # producedAt — skip
+        _, plen, pos = _read_tlv(der_data, pos)
+        pos += plen
+        # responses SEQUENCE OF
+        _, _, pos = _read_tlv(der_data, pos)
+        # SingleResponse SEQUENCE
+        _, _, pos = _read_tlv(der_data, pos)
+        # certID SEQUENCE — skip
+        _, clen, pos = _read_tlv(der_data, pos)
+        pos += clen
+        # certStatus tag
+        tag = der_data[pos]
+        if tag == 0x80:
+            return 'good'
+        elif tag & 0xE0 == 0xA0 and (tag & 0x1F) == 1:
+            return 'revoked'
+        else:
+            return 'unknown'
+    except (IndexError, ValueError):
+        return 'unknown'
+
+
+def _query_ocsp_responder(responder_url: str) -> str:
+    """Query an OCSP responder URL via HTTP POST, return 'good'/'revoked'/'unknown'."""
+    try:
+        req = urllib.request.Request(
+            responder_url,
+            data=b'\x30\x00',
+            headers={'Content-Type': 'application/ocsp-request'},
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return _parse_ocsp_response_status(resp.read())
+    except Exception as e:
+        logging.warning(f"OCSP query to {responder_url} failed: {e}")
+        return 'unknown'
+
+
+def _extract_ocsp_url_from_cert(pem_cert: str):
+    """Extract OCSP responder URL from certificate AIA extension."""
+    try:
+        from cryptography import x509 as cx509
+        from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
+        cert = cx509.load_pem_x509_certificate(pem_cert.encode('utf-8'))
+        aia = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
+        for desc in aia.value:
+            if desc.access_method == AuthorityInformationAccessOID.OCSP:
+                return desc.access_location.value
+    except Exception as e:
+        logging.warning(f"Failed to extract OCSP URL from certificate: {e}")
+    return None
 
 
 # ─── Global State ────────────────────────────────────────────────────────────
@@ -1194,6 +1289,12 @@ async def _k_send_set_charging_profile(cp, evse_id, profile):
             f"(evse_id={evse_id}, purpose={profile.get('charging_profile_purpose')}, "
             f"profile_id={profile.get('id')})"
         )
+        # Store offered schedule BEFORE sending so it's available when the CP
+        # responds with NotifyEVChargingSchedule before the call() returns.
+        if profile.get('charging_profile_purpose') == 'TxProfile':
+            offered = _k_extract_schedule(profile)
+            if offered is not None:
+                _k_last_offered_schedule[cp.id] = deepcopy(offered)
         response = await cp.call(call.SetChargingProfile(evse_id=evse_id, charging_profile=profile))
         # CALLERROR may be surfaced as a response object instead of an exception
         # depending on the ocpp stack internals. Treat such responses as failure.
@@ -1205,10 +1306,6 @@ async def _k_send_set_charging_profile(cp, evse_id, profile):
             _k_exclusive_mode.add(cp.id)
             _h_mode_active.discard(cp.id)
             logging.info(f"K-mode confirmed for {cp.id}; H-mode suppressed for this CP")
-        if profile.get('charging_profile_purpose') == 'TxProfile':
-            offered = _k_extract_schedule(profile)
-            if offered is not None:
-                _k_last_offered_schedule[cp.id] = deepcopy(offered)
     except Exception as e:
         if _active_cp_instance.get(cp.id) is not cp:
             return
@@ -1521,15 +1618,26 @@ class ChargePointHandler(ChargePoint):
         # SP1 provisioning only applies to WS (non-TLS) connections.
         # WSS connections rely on trigger API for test actions.
         if self._security_profile == 1 and self.id not in _auto_detect_used:
-            # Post-provisioning mode: always Accepted, action triggered by silence
+            # Post-provisioning mode: always Accepted, action triggered by silence.
+            # When post-prov actions are exhausted, transition to K-mode.
             if self.id in _post_prov_mode_active:
-                self._boot_status = 'Accepted'
-                logging.info(f"Post-provisioning boot for {self.id}: Accepted")
-                return call_result.BootNotification(
-                    current_time=now_iso(),
-                    interval=10,
-                    status=RegistrationStatusEnumType.accepted,
+                prov_exhausted = (
+                    _post_prov_global_index >= len(_POST_PROVISIONING_ACTIONS)
+                    or _POST_PROVISIONING_ACTIONS[_post_prov_global_index] is None
                 )
+                if prov_exhausted and _k_action_index.get(self.id, 0) < len(_SP1_K_PROVISIONING):
+                    _post_prov_mode_active.discard(self.id)
+                    _k_mode_active.add(self.id)
+                    logging.info(f"Post-prov to K-mode transition for {self.id}")
+                    # Fall through to K-mode boot handler below
+                else:
+                    self._boot_status = 'Accepted'
+                    logging.info(f"Post-provisioning boot for {self.id}: Accepted")
+                    return call_result.BootNotification(
+                        current_time=now_iso(),
+                        interval=10,
+                        status=RegistrationStatusEnumType.accepted,
+                    )
 
             # F-mode: always Accepted, action triggered by silence detection
             if self.id in _f_mode_active:
@@ -1711,7 +1819,41 @@ class ChargePointHandler(ChargePoint):
                 status=getattr(RegistrationStatusEnumType, boot_status.lower()),
             )
 
-        # Non-SP1 boots: always Accepted
+        # SP1 CPs that bypassed the provisioning block (e.g., _auto_detect_used
+        # set by E-test no-boot connections) still need K-mode handling.
+        if self._security_profile == 1 and self.id in _auto_detect_used:
+            # Post-prov → K transition when post-prov actions exhausted
+            if self.id in _post_prov_mode_active:
+                prov_exhausted = (
+                    _post_prov_global_index >= len(_POST_PROVISIONING_ACTIONS)
+                    or _POST_PROVISIONING_ACTIONS[_post_prov_global_index] is None
+                )
+                if prov_exhausted and _k_action_index.get(self.id, 0) < len(_SP1_K_PROVISIONING):
+                    _post_prov_mode_active.discard(self.id)
+                    _k_mode_active.add(self.id)
+                    logging.info(f"Post-prov to K-mode transition for {self.id} (auto-detect path)")
+
+            # K → L transition
+            if (
+                self.id in _k_mode_active
+                and _k_action_index.get(self.id, 0) >= len(_SP1_K_PROVISIONING)
+            ):
+                _k_mode_active.discard(self.id)
+                if _l_action_index.get(self.id, 0) < len(_SP1_L_PROVISIONING):
+                    _l_mode_active.add(self.id)
+
+            # K-mode boot handling
+            if self.id in _k_mode_active:
+                self._k_session_index = _k_allocate_session_index(self.id)
+                self._boot_status = 'Accepted'
+                logging.info(f"K-mode boot for {self.id}: Accepted (session_index={self._k_session_index}, auto-detect path)")
+                return call_result.BootNotification(
+                    current_time=now_iso(),
+                    interval=10,
+                    status=RegistrationStatusEnumType.accepted,
+                )
+
+        # Non-SP1 boots (or SP1 with no active mode): always Accepted
         self._boot_status = 'Accepted'
         return call_result.BootNotification(
             current_time=now_iso(),
@@ -1947,6 +2089,17 @@ class ChargePointHandler(ChargePoint):
         except Exception as e:
             logging.error(f"Failed to send CertificateSignedRequest to {self.id}: {e}")
 
+    async def _send_get_transaction_status_after_ended(self, transaction_id):
+        """Send GetTransactionStatusRequest after receiving Ended+offline (E_31)."""
+        await asyncio.sleep(2)
+        if not self._connection.open:
+            return
+        try:
+            logging.info(f"Sending GetTransactionStatusRequest to {self.id} (txn={transaction_id})")
+            await self.call(call.GetTransactionStatus(transaction_id=transaction_id))
+        except Exception as e:
+            logging.warning(f"GetTransactionStatus call failed for {self.id}: {e}")
+
     @on(Action.authorize)
     async def on_authorize(self, id_token, certificate=None,
                            iso15118_certificate_hash_data=None, **kwargs):
@@ -1964,22 +2117,46 @@ class ChargePointHandler(ChargePoint):
         response_kwargs = {'id_token_info': id_token_info}
 
         if iso15118_certificate_hash_data or certificate:
-            # Check if any certificate in the hash data is revoked
-            revoked = False
+            ocsp_status = None
+            # Try live OCSP query first
             if iso15118_certificate_hash_data:
                 for hash_entry in iso15118_certificate_hash_data:
-                    serial = (hash_entry.get('serial_number', '')
-                              if isinstance(hash_entry, dict)
-                              else getattr(hash_entry, 'serial_number', ''))
-                    if serial in _REVOKED_SERIALS:
-                        revoked = True
+                    responder_url = (hash_entry.get('responder_url', '')
+                                     if isinstance(hash_entry, dict)
+                                     else getattr(hash_entry, 'responder_url', ''))
+                    if responder_url:
+                        ocsp_status = await asyncio.to_thread(
+                            _query_ocsp_responder, responder_url)
                         break
-            if revoked:
+            elif certificate:
+                ocsp_url = _extract_ocsp_url_from_cert(certificate)
+                if ocsp_url:
+                    ocsp_status = await asyncio.to_thread(
+                        _query_ocsp_responder, ocsp_url)
+
+            if ocsp_status == 'revoked':
                 response_kwargs['certificate_status'] = 'CertificateRevoked'
                 id_token_info['status'] = 'Invalid'
-                logging.info(f"Certificate revoked for {self.id}")
-            else:
+                logging.info(f"OCSP: certificate revoked for {self.id}")
+            elif ocsp_status == 'good':
                 response_kwargs['certificate_status'] = 'Accepted'
+                logging.info(f"OCSP: certificate accepted for {self.id}")
+            else:
+                # Fallback to local revoked serials check
+                revoked = False
+                if iso15118_certificate_hash_data:
+                    for hash_entry in iso15118_certificate_hash_data:
+                        serial = (hash_entry.get('serial_number', '')
+                                  if isinstance(hash_entry, dict)
+                                  else getattr(hash_entry, 'serial_number', ''))
+                        if serial in _REVOKED_SERIALS:
+                            revoked = True
+                            break
+                if revoked:
+                    response_kwargs['certificate_status'] = 'CertificateRevoked'
+                    id_token_info['status'] = 'Invalid'
+                else:
+                    response_kwargs['certificate_status'] = 'Accepted'
 
         return call_result.Authorize(**response_kwargs)
 
@@ -2041,8 +2218,12 @@ class ChargePointHandler(ChargePoint):
         if event_type_text == 'Ended':
             response_kwargs['total_cost'] = _estimate_transaction_total_cost(self.id, txn_id)
 
+        # E_31: after receiving Ended+offline, proactively send GetTransactionStatusRequest.
+        if event_type_text == 'Ended' and kwargs.get('offline', False) and txn_id:
+            asyncio.create_task(self._send_get_transaction_status_after_ended(txn_id))
+
         # K-mode transaction-driven actions (K_58, K_59, K_60, K_70, K_55 renegotiation).
-        if self.id in _k_mode_active:
+        if self.id in _k_mode_active or self._k_renegotiation_pending:
             asyncio.create_task(
                 _k_handle_transaction_event(
                     self,
@@ -2094,8 +2275,8 @@ class ChargePointHandler(ChargePoint):
             f"session_index={_k_session_index(self)}"
         )
         idx = _k_session_index(self)
-        if self.id in _k_mode_active and idx in (25, 26, 27, 28, 29):
-            txn_id = _k_latest_transaction_id.get(self.id)
+        txn_id = _k_latest_transaction_id.get(self.id)
+        if txn_id:
             asyncio.create_task(_k_send_tx_profile_for_transaction(self, txn_id))
         return call_result.NotifyEVChargingNeeds(status='Accepted')
 
@@ -2103,12 +2284,11 @@ class ChargePointHandler(ChargePoint):
     async def on_notify_ev_charging_schedule(self, time_base, charging_schedule, evse_id, **kwargs):
         idx = _k_session_index(self)
         status = GenericStatusEnumType.accepted
-        if self.id in _k_mode_active and idx == 26:
-            # K_55: first schedule exceeds offered limits -> Rejected, then renegotiate.
-            if _k_schedule_exceeds_offer(self.id, charging_schedule) and not self._k_schedule_rejected_once:
-                self._k_schedule_rejected_once = True
-                self._k_renegotiation_pending = True
-                status = GenericStatusEnumType.rejected
+        # K_55: first schedule exceeds offered limits -> Rejected, then renegotiate.
+        if _k_schedule_exceeds_offer(self.id, charging_schedule) and not self._k_schedule_rejected_once:
+            self._k_schedule_rejected_once = True
+            self._k_renegotiation_pending = True
+            status = GenericStatusEnumType.rejected
         logging.info(
             f"NotifyEVChargingSchedule from {self.id}: evse_id={evse_id}, "
             f"session_index={idx}, status={status}"
@@ -3905,12 +4085,7 @@ def _rollback_k_index_on_disconnect(cp):
 async def _k_handle_transaction_event(cp, *, event_type_text, trigger_reason_text,
                                       charging_state_text, transaction_id):
     """Handle transaction-driven smart charging actions for later K tests."""
-    if cp.id not in _k_mode_active:
-        return
-
     idx = _k_session_index(cp)
-    if idx < 0:
-        return
 
     txn_id = transaction_id or _k_latest_transaction_id.get(cp.id)
     if txn_id is None:
@@ -3925,7 +4100,7 @@ async def _k_handle_transaction_event(cp, *, event_type_text, trigger_reason_tex
         return
 
     # K_55: if EV schedule exceeded limits and was rejected, renegotiate.
-    if idx == 26 and cp._k_renegotiation_pending and not cp._k_initiated_set_sent:
+    if cp._k_renegotiation_pending and not cp._k_initiated_set_sent:
         cp._k_renegotiation_pending = False
         cp._k_initiated_set_sent = True
         await asyncio.sleep(0.5)

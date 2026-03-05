@@ -53,58 +53,69 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
+from mock_ocsp_responder import MockOCSPResponder
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+
+OCSP_PORT = 19080
 
 
 @pytest.mark.asyncio
 async def test_tc_m_24():
     """Get Charging Station Certificate status - Success."""
-    cp_id = BASIC_AUTH_CP
-    uri = f'{CSMS_ADDRESS}/{cp_id}'
-    headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
+    ocsp_responder = MockOCSPResponder(port=OCSP_PORT, cert_status="good")
+    ocsp_responder.start()
 
-    ws = await websockets.connect(
-        uri=uri,
-        subprotocols=['ocpp2.0.1'],
-        extra_headers=headers,
-    )
-    time.sleep(0.5)
+    try:
+        cp_id = BASIC_AUTH_CP
+        uri = f'{CSMS_ADDRESS}/{cp_id}'
+        headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    cp = TziChargePoint(cp_id, ws)
-    start_task = asyncio.create_task(cp.start())
+        ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+        ws = await websockets.connect(
+            uri=uri,
+            subprotocols=['ocpp2.0.1'],
+            extra_headers=headers,
+            ssl=ssl_ctx,
+        )
+        time.sleep(0.5)
 
-    # Boot and establish session
-    boot_response = await cp.send_boot_notification()
-    assert boot_response.status == RegistrationStatusEnumType.accepted
+        cp = TziChargePoint(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
 
-    await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
+        # Boot and establish session
+        boot_response = await cp.send_boot_notification()
+        assert boot_response.status == RegistrationStatusEnumType.accepted
 
-    # Step 1: CS sends GetCertificateStatusRequest with OCSP data
-    ocsp_request_data = {
-        'hash_algorithm': HashAlgorithmEnumType.sha256,
-        'issuer_name_hash': 'aabbccdd' * 8,
-        'issuer_key_hash': 'eeff0011' * 8,
-        'serial_number': '01020304',
-        'responder_url': 'http://ocsp.example.com',
-    }
+        await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    response = await cp.send_get_certificate_status_request(ocsp_request_data)
+        # Step 1: CS sends GetCertificateStatusRequest with OCSP data
+        ocsp_request_data = {
+            'hash_algorithm': HashAlgorithmEnumType.sha256,
+            'issuer_name_hash': 'aabbccdd' * 8,
+            'issuer_key_hash': 'eeff0011' * 8,
+            'serial_number': '01020304',
+            'responder_url': f'http://localhost:{OCSP_PORT}',
+        }
 
-    # Tool validation Step 2: status must be Accepted
-    assert response.status == GetCertificateStatusEnumType.accepted, \
-        f"Expected GetCertificateStatusResponse status=Accepted, got {response.status}"
+        response = await cp.send_get_certificate_status_request(ocsp_request_data)
 
-    # Tool validation Step 2: ocspResult must be present
-    assert response.ocsp_result is not None and len(response.ocsp_result) > 0, \
-        "ocspResult must be present in GetCertificateStatusResponse"
+        # Tool validation Step 2: status must be Accepted
+        assert response.status == GetCertificateStatusEnumType.accepted, \
+            f"Expected GetCertificateStatusResponse status=Accepted, got {response.status}"
 
-    logging.info("TC_M_24 completed successfully")
-    start_task.cancel()
-    await ws.close()
+        # Tool validation Step 2: ocspResult must be present
+        assert response.ocsp_result is not None and len(response.ocsp_result) > 0, \
+            "ocspResult must be present in GetCertificateStatusResponse"
+
+        logging.info("TC_M_24 completed successfully")
+        start_task.cancel()
+        await ws.close()
+    finally:
+        ocsp_responder.stop()

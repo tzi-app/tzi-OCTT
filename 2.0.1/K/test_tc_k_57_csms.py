@@ -59,14 +59,20 @@ from ocpp.v201.enums import (
     ChargingProfilePurposeEnumType, EnergyTransferModeEnumType,
 )
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 from reusable_states.authorized import authorized
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 
 logging.basicConfig(level=logging.INFO)
 
+
+def get_field(d, snake, camel):
+    v = d.get(snake)
+    return v if v is not None else d.get(camel)
+
+
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
@@ -110,7 +116,7 @@ async def _execute_iso15118_smart_charging(cp, transaction_id):
     cp._profile_received.clear()
 
     profile = cp._set_charging_profile_requests[-1]['charging_profile']
-    schedules = profile.get('charging_schedule') or profile.get('chargingSchedule')
+    schedules = get_field(profile, 'charging_schedule', 'chargingSchedule')
     schedule = schedules[0] if isinstance(schedules, list) else schedules
 
     # NotifyEVChargingScheduleRequest
@@ -137,7 +143,8 @@ async def test_tc_k_57():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -175,15 +182,15 @@ async def test_tc_k_57():
     await asyncio.wait_for(cp._profile_received.wait(), timeout=CSMS_ACTION_TIMEOUT)
     profile = cp._set_charging_profile_requests[-1]
     p = profile['charging_profile']
-    purpose = p.get('charging_profile_purpose') or p.get('chargingProfilePurpose')
+    purpose = get_field(p, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile)
     assert profile['evse_id'] == EVSE_ID
-    tx_id = p.get('transaction_id') or p.get('transactionId')
+    tx_id = get_field(p, 'transaction_id', 'transactionId')
     assert tx_id == transaction_id, \
         f"Expected transactionId={transaction_id}, got {tx_id}"
 
     # Step 5: CS sends NotifyEVChargingScheduleRequest (schedule from step 3)
-    schedules = p.get('charging_schedule') or p.get('chargingSchedule')
+    schedules = get_field(p, 'charging_schedule', 'chargingSchedule')
     schedule = schedules[0] if isinstance(schedules, list) else schedules
     notify_sched = call.NotifyEVChargingSchedule(
         time_base=now_iso(), charging_schedule=schedule, evse_id=EVSE_ID,

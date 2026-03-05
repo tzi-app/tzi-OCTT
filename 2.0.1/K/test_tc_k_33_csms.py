@@ -31,12 +31,13 @@ from ocpp.v201.enums import (
     GetChargingProfileStatusEnumType, ChargingLimitSourceEnumType,
 )
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, now_iso
+from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
@@ -66,7 +67,8 @@ async def test_tc_k_33():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -76,7 +78,13 @@ async def test_tc_k_33():
     assert boot_response.status == RegistrationStatusEnumType.accepted
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    async def trigger_get_profiles():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "GetChargingProfiles", {"requestId": 1, "chargingProfile": {"stackLevel": 0}, "evseId": EVSE_ID})
+    trigger_task = asyncio.create_task(trigger_get_profiles())
+
     await asyncio.wait_for(cp._received_get_charging_profiles.wait(), timeout=CSMS_ACTION_TIMEOUT)
+    trigger_task.cancel()
 
     req_data = cp._get_charging_profiles_data
     assert req_data['evse_id'] is not None and req_data['evse_id'] > 0, \

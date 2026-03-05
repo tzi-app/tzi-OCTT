@@ -61,12 +61,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, now_iso
+from trigger import send_call
+from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
@@ -101,10 +102,12 @@ async def test_tc_k_02():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -117,61 +120,92 @@ async def test_tc_k_02():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    # Trigger CSMS to send SetChargingProfileRequest
+    async def trigger_set_profile():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "SetChargingProfile", {
+            "evseId": EVSE_ID,
+            "chargingProfile": {
+                "id": 1,
+                "stackLevel": 0,
+                "chargingProfilePurpose": "TxProfile",
+                "chargingProfileKind": "Relative",
+                "chargingSchedule": [{
+                    "id": 1,
+                    "chargingRateUnit": "A",
+                    "chargingSchedulePeriod": [{
+                        "startPeriod": 0,
+                        "limit": 7.0,
+                        "numberPhases": CONFIGURED_NUMBER_PHASES,
+                    }],
+                }],
+            },
+        })
+
+    trigger_task = asyncio.create_task(trigger_set_profile())
+
     # Step 1-2: Wait for CSMS to send SetChargingProfileRequest
     await asyncio.wait_for(
         cp._received_set_charging_profile.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
 
+    trigger_task.cancel()
+
     # Validate Step 1
     assert cp._set_charging_profile_data is not None
     req_data = cp._set_charging_profile_data
     profile = req_data['charging_profile']
+
+    def get_field(d, snake, camel):
+        """Get field by snake_case key, falling back to camelCase."""
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
 
     # evseId must be configured evseId
     assert req_data['evse_id'] == EVSE_ID, \
         f"Expected evseId={EVSE_ID}, got {req_data['evse_id']}"
 
     # chargingProfilePurpose must be TxProfile
-    purpose = profile.get('charging_profile_purpose') or profile.get('chargingProfilePurpose')
+    purpose = get_field(profile, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile), \
         f"Expected purpose=TxProfile, got {purpose}"
 
     # stackLevel must be present
-    stack_level = profile.get('stack_level') or profile.get('stackLevel')
+    stack_level = get_field(profile, 'stack_level', 'stackLevel')
     assert stack_level is not None, "stackLevel must be present"
 
     # chargingProfileKind must be Relative
-    kind = profile.get('charging_profile_kind') or profile.get('chargingProfileKind')
+    kind = get_field(profile, 'charging_profile_kind', 'chargingProfileKind')
     assert kind in ('Relative', ChargingProfileKindEnumType.relative), \
         f"Expected kind=Relative, got {kind}"
 
     # chargingSchedule validations
-    schedules = profile.get('charging_schedule') or profile.get('chargingSchedule')
+    schedules = get_field(profile, 'charging_schedule', 'chargingSchedule')
     assert schedules is not None and len(schedules) > 0
     schedule = schedules[0] if isinstance(schedules, list) else schedules
 
     # startSchedule must be omitted for Relative kind
-    start_schedule = schedule.get('start_schedule') or schedule.get('startSchedule')
+    start_schedule = get_field(schedule, 'start_schedule', 'startSchedule')
     assert start_schedule is None, \
         f"Expected startSchedule to be omitted for Relative kind, got {start_schedule}"
 
     # chargingRateUnit must be present
-    rate_unit = schedule.get('charging_rate_unit') or schedule.get('chargingRateUnit')
+    rate_unit = get_field(schedule, 'charging_rate_unit', 'chargingRateUnit')
     assert rate_unit is not None, "chargingRateUnit must be present"
 
-    periods = schedule.get('charging_schedule_period') or schedule.get('chargingSchedulePeriod')
+    periods = get_field(schedule, 'charging_schedule_period', 'chargingSchedulePeriod')
     assert periods is not None and len(periods) > 0
     period = periods[0]
 
-    start_period = period.get('start_period') if period.get('start_period') is not None else period.get('startPeriod')
+    start_period = get_field(period, 'start_period', 'startPeriod')
     assert start_period == 0, f"Expected startPeriod=0, got {start_period}"
 
     limit = period.get('limit')
     assert limit in (7.0, 7000.0), f"Expected limit=7.0 or 7000.0, got {limit}"
 
     # numberPhases validation
-    number_phases = period.get('number_phases') if period.get('number_phases') is not None else period.get('numberPhases')
+    number_phases = get_field(period, 'number_phases', 'numberPhases')
     if CONFIGURED_NUMBER_PHASES != 3:
         assert number_phases == CONFIGURED_NUMBER_PHASES, \
             f"Expected numberPhases={CONFIGURED_NUMBER_PHASES}, got {number_phases}"

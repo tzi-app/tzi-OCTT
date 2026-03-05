@@ -47,12 +47,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from trigger import send_call
+from utils import get_basic_auth_headers, build_default_ssl_context
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_D']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -64,10 +65,12 @@ async def test_tc_d_09():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if uri.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -80,11 +83,14 @@ async def test_tc_d_09():
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)
 
-    # Wait for CSMS to send GetLocalListVersionRequest
+    # Trigger CSMS to send GetLocalListVersionRequest
+    trigger_task = asyncio.create_task(send_call(cp_id, "GetLocalListVersion", {}))
+
     await asyncio.wait_for(
         cp._received_get_local_list_version.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    await trigger_task
 
     # The MockChargePoint handler automatically responds with versionNumber=0.
     # We verify the CSMS actually sent the request (event was set).

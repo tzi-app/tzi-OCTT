@@ -32,6 +32,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import websockets
@@ -49,12 +50,13 @@ from ocpp.v201.enums import (
 from ocpp.exceptions import NotSupportedError
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, now_iso
+from utils import get_basic_auth_headers, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
@@ -88,10 +90,12 @@ async def test_tc_k_15():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -103,46 +107,82 @@ async def test_tc_k_15():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
+    # Trigger CSMS to send SetChargingProfileRequest
+    now = datetime.now(timezone.utc)
+    schedule_duration = 3600
+
+    async def trigger_action():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "SetChargingProfile", {
+            "evseId": EVSE_ID,
+            "chargingProfile": {
+                "id": 1,
+                "stackLevel": 0,
+                "chargingProfilePurpose": "TxDefaultProfile",
+                "chargingProfileKind": "Absolute",
+                "validFrom": now.isoformat(),
+                "validTo": (now + timedelta(seconds=schedule_duration)).isoformat(),
+                "chargingSchedule": [{
+                    "id": 1,
+                    "startSchedule": now.isoformat(),
+                    "chargingRateUnit": "A",
+                    "duration": schedule_duration,
+                    "chargingSchedulePeriod": [{
+                        "startPeriod": 0,
+                        "limit": 6.0,
+                        "numberPhases": CONFIGURED_NUMBER_PHASES,
+                    }],
+                }],
+            },
+        })
+    trigger_task = asyncio.create_task(trigger_action())
+
     # Wait for CSMS to send SetChargingProfileRequest
     await asyncio.wait_for(
         cp._received_set_charging_profile.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate the request was received (response was CALLERROR NotSupported)
     assert cp._set_charging_profile_data is not None
     req_data = cp._set_charging_profile_data
     profile = req_data['charging_profile']
 
+    def get_field(d, snake, camel):
+        """Get field by snake_case key, falling back to camelCase."""
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
     # Validate evseId
     assert req_data['evse_id'] == EVSE_ID, \
         f"Expected evseId={EVSE_ID}, got {req_data['evse_id']}"
 
     # Validate purpose is TxDefaultProfile
-    purpose = profile.get('charging_profile_purpose') or profile.get('chargingProfilePurpose')
+    purpose = get_field(profile, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose in ('TxDefaultProfile', ChargingProfilePurposeEnumType.tx_default_profile), \
         f"Expected purpose=TxDefaultProfile, got {purpose}"
 
     # Validate kind is Absolute
-    kind = profile.get('charging_profile_kind') or profile.get('chargingProfileKind')
+    kind = get_field(profile, 'charging_profile_kind', 'chargingProfileKind')
     assert kind in ('Absolute', ChargingProfileKindEnumType.absolute), \
         f"Expected kind=Absolute, got {kind}"
 
     # stackLevel must be present
-    stack_level = profile.get('stack_level') or profile.get('stackLevel')
+    stack_level = get_field(profile, 'stack_level', 'stackLevel')
     assert stack_level is not None, "stackLevel must be present"
 
     # chargingSchedule validations
-    schedules = profile.get('charging_schedule') or profile.get('chargingSchedule')
+    schedules = get_field(profile, 'charging_schedule', 'chargingSchedule')
     assert schedules is not None and len(schedules) > 0, "chargingSchedule must be present"
     schedule = schedules[0] if isinstance(schedules, list) else schedules
 
     # startSchedule must NOT be omitted
-    start_schedule = schedule.get('start_schedule') or schedule.get('startSchedule')
+    start_schedule = get_field(schedule, 'start_schedule', 'startSchedule')
     assert start_schedule is not None, "startSchedule must not be omitted"
 
     # chargingRateUnit must be present
-    rate_unit = schedule.get('charging_rate_unit') or schedule.get('chargingRateUnit')
+    rate_unit = get_field(schedule, 'charging_rate_unit', 'chargingRateUnit')
     assert rate_unit is not None, "chargingRateUnit must be present"
 
     # duration must be present
@@ -150,12 +190,12 @@ async def test_tc_k_15():
     assert duration is not None, "duration must be present"
 
     # chargingSchedulePeriod validations
-    periods = schedule.get('charging_schedule_period') or schedule.get('chargingSchedulePeriod')
+    periods = get_field(schedule, 'charging_schedule_period', 'chargingSchedulePeriod')
     assert periods is not None and len(periods) > 0, "chargingSchedulePeriod must be present"
     period = periods[0]
 
     # startPeriod must be 0
-    start_period = period.get('start_period') if period.get('start_period') is not None else period.get('startPeriod')
+    start_period = get_field(period, 'start_period', 'startPeriod')
     assert start_period == 0, f"Expected startPeriod=0, got {start_period}"
 
     # limit must be 6.0 or 6000.0
@@ -163,7 +203,7 @@ async def test_tc_k_15():
     assert limit in (6.0, 6000.0), f"Expected limit=6.0 or 6000.0, got {limit}"
 
     # numberPhases validation
-    number_phases = period.get('number_phases') if period.get('number_phases') is not None else period.get('numberPhases')
+    number_phases = get_field(period, 'number_phases', 'numberPhases')
     if CONFIGURED_NUMBER_PHASES != 3:
         assert number_phases == CONFIGURED_NUMBER_PHASES, \
             f"Expected numberPhases={CONFIGURED_NUMBER_PHASES}, got {number_phases}"

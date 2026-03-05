@@ -63,12 +63,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
@@ -84,10 +85,12 @@ async def test_tc_k_37():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -102,10 +105,34 @@ async def test_tc_k_37():
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
     # Step 1-2: Wait for CSMS to send RequestStartTransactionRequest
+    async def trigger_remote_start():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "RequestStartTransaction", {
+            "idToken": {"idToken": VALID_ID_TOKEN, "type": VALID_ID_TOKEN_TYPE},
+            "remoteStartId": 1,
+            "evseId": EVSE_ID,
+            "chargingProfile": {
+                "id": 1,
+                "stackLevel": 0,
+                "chargingProfilePurpose": "TxProfile",
+                "chargingProfileKind": "Relative",
+                "chargingSchedule": [{
+                    "id": 1,
+                    "chargingRateUnit": "A",
+                    "chargingSchedulePeriod": [{
+                        "startPeriod": 0,
+                        "limit": 6.0,
+                    }],
+                }],
+            },
+        })
+    trigger_task = asyncio.create_task(trigger_remote_start())
+
     await asyncio.wait_for(
         cp._received_request_start_transaction.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     assert cp._request_start_transaction_data is not None
     req_data = cp._request_start_transaction_data
@@ -126,22 +153,27 @@ async def test_tc_k_37():
     charging_profile = req_data['charging_profile']
     assert charging_profile is not None, "chargingProfile must be present"
 
-    purpose = charging_profile.get('charging_profile_purpose') or charging_profile.get('chargingProfilePurpose')
+    def get_field(d, snake, camel):
+        """Get field by snake_case key, falling back to camelCase."""
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
+    purpose = get_field(charging_profile, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile), \
         f"Expected purpose=TxProfile, got {purpose}"
 
-    tx_id = charging_profile.get('transaction_id') or charging_profile.get('transactionId')
+    tx_id = get_field(charging_profile, 'transaction_id', 'transactionId')
     assert tx_id is None, f"Expected transactionId to be omitted, got {tx_id}"
 
-    kind = charging_profile.get('charging_profile_kind') or charging_profile.get('chargingProfileKind')
+    kind = get_field(charging_profile, 'charging_profile_kind', 'chargingProfileKind')
     assert kind in ('Relative', 'Absolute', ChargingProfileKindEnumType.relative, ChargingProfileKindEnumType.absolute), \
         f"Expected kind=Relative or Absolute, got {kind}"
 
     # Conditional startSchedule validation based on chargingProfileKind
-    schedules = charging_profile.get('charging_schedule') or charging_profile.get('chargingSchedule')
+    schedules = get_field(charging_profile, 'charging_schedule', 'chargingSchedule')
     if schedules:
         schedule = schedules[0] if isinstance(schedules, list) else schedules
-        start_schedule = schedule.get('start_schedule') or schedule.get('startSchedule')
+        start_schedule = get_field(schedule, 'start_schedule', 'startSchedule')
         if kind in ('Relative', ChargingProfileKindEnumType.relative):
             assert start_schedule is None, \
                 f"Expected startSchedule to be omitted for Relative kind, got {start_schedule}"

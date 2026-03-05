@@ -33,7 +33,7 @@ from ocpp.v201.enums import AuthorizationStatusEnumType as AuthorizationStatusTy
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, validate_schema
 
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_C']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
 @pytest.mark.asyncio

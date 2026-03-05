@@ -78,14 +78,14 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers, generate_transaction_id, now_iso
+from utils import get_basic_auth_headers, generate_transaction_id, now_iso, build_default_ssl_context
 from reusable_states.authorized import authorized
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
@@ -126,7 +126,8 @@ async def test_tc_k_55():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
-    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers)
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
+    ws = await websockets.connect(uri=uri, subprotocols=['ocpp2.0.1'], extra_headers=headers, ssl=ssl_ctx)
     time.sleep(0.5)
 
     cp = SmartChargingMockCP(cp_id, ws)
@@ -160,20 +161,24 @@ async def test_tc_k_55():
     await asyncio.wait_for(cp._first_profile_received.wait(), timeout=CSMS_ACTION_TIMEOUT)
     profile1 = cp._set_charging_profile_requests[0]
 
+    def get_field(d, snake, camel):
+        v = d.get(snake)
+        return v if v is not None else d.get(camel)
+
     # Validate step 3
     assert profile1['evse_id'] == EVSE_ID
     p1 = profile1['charging_profile']
-    purpose1 = p1.get('charging_profile_purpose') or p1.get('chargingProfilePurpose')
+    purpose1 = get_field(p1, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose1 in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile)
-    tx_id1 = p1.get('transaction_id') or p1.get('transactionId')
+    tx_id1 = get_field(p1, 'transaction_id', 'transactionId')
     assert tx_id1 == transaction_id
 
     # Step 5: Send NotifyEVChargingScheduleRequest that EXCEEDS limits of step 3
-    schedules1 = p1.get('charging_schedule') or p1.get('chargingSchedule')
+    schedules1 = get_field(p1, 'charging_schedule', 'chargingSchedule')
     schedule1 = schedules1[0] if isinstance(schedules1, list) else schedules1
     # Create an exceeding schedule by increasing the limit
     exceeding_schedule = dict(schedule1)
-    periods = exceeding_schedule.get('charging_schedule_period') or exceeding_schedule.get('chargingSchedulePeriod')
+    periods = get_field(exceeding_schedule, 'charging_schedule_period', 'chargingSchedulePeriod')
     if periods:
         exceeding_periods = []
         for p in periods:
@@ -217,13 +222,13 @@ async def test_tc_k_55():
     # Validate step 9
     assert profile2['evse_id'] == EVSE_ID
     p2 = profile2['charging_profile']
-    purpose2 = p2.get('charging_profile_purpose') or p2.get('chargingProfilePurpose')
+    purpose2 = get_field(p2, 'charging_profile_purpose', 'chargingProfilePurpose')
     assert purpose2 in ('TxProfile', ChargingProfilePurposeEnumType.tx_profile)
-    tx_id2 = p2.get('transaction_id') or p2.get('transactionId')
+    tx_id2 = get_field(p2, 'transaction_id', 'transactionId')
     assert tx_id2 == transaction_id
 
     # Step 11: Send NotifyEVChargingScheduleRequest with schedule from step 9
-    schedules2 = p2.get('charging_schedule') or p2.get('chargingSchedule')
+    schedules2 = get_field(p2, 'charging_schedule', 'chargingSchedule')
     schedule2 = schedules2[0] if isinstance(schedules2, list) else schedules2
 
     notify_schedule2_payload = call.NotifyEVChargingSchedule(

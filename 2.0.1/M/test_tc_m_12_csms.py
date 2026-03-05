@@ -52,12 +52,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
@@ -83,10 +84,12 @@ async def test_tc_m_12():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -120,11 +123,18 @@ async def test_tc_m_12():
             hash_algo,
         )
 
-        # Wait for CSMS to send GetInstalledCertificateIdsRequest
+        # Trigger CSMS to send GetInstalledCertificateIdsRequest
+        async def trigger_get_certs():
+            await asyncio.sleep(1)
+            await send_call(cp_id, "GetInstalledCertificateIds", {
+                "certificateType": ["CSMSRootCertificate"],
+            })
+        trigger_task = asyncio.create_task(trigger_get_certs())
         await asyncio.wait_for(
             cp._received_get_installed_certificate_ids.wait(),
             timeout=CSMS_ACTION_TIMEOUT,
         )
+        trigger_task.cancel()
 
         # Validate request content
         assert cp._get_installed_certificate_ids_data is not None

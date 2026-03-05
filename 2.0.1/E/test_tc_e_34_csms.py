@@ -31,9 +31,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers
+from trigger import send_call
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_E']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
 
@@ -57,11 +58,20 @@ async def test_tc_e_34(connection):
     cp._get_transaction_status_messages_in_queue = False
     start_task = asyncio.create_task(cp.start())
 
-    # Step 1-2: Wait for CSMS to send GetTransactionStatusRequest (no transactionId)
+    # Drain CSMS-initiated messages (stale transaction checks from DB)
+    await cp.drain_post_boot()
+
+    # Step 1-2: Trigger CSMS to send GetTransactionStatusRequest (no transactionId)
+    async def trigger_get_status():
+        await send_call(BASIC_AUTH_CP, "GetTransactionStatus", {})
+
+    trigger_task = asyncio.create_task(trigger_get_status())
+
     await asyncio.wait_for(
         cp._received_get_transaction_status.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate transactionId is None/omitted in request
     assert cp._get_transaction_status_data is not None

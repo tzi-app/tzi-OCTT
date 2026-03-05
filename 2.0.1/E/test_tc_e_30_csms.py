@@ -37,11 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, generate_transaction_id
+from trigger import send_call
 from reusable_states.authorized import authorized
 from reusable_states.energy_transfer_started import energy_transfer_started
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP_E']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
 VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
@@ -77,11 +78,21 @@ async def test_tc_e_30(connection):
     await energy_transfer_started(cp, evse_id=EVSE_ID, connector_id=CONNECTOR_ID,
                                   transaction_id=transaction_id)
 
-    # Step 1-2: Wait for CSMS to send GetTransactionStatusRequest
+    # Drain CSMS-initiated messages (stale transaction checks from DB)
+    await cp.drain_post_boot()
+
+    # Step 1-2: Trigger CSMS to send GetTransactionStatusRequest
+    async def trigger_get_status():
+        await send_call(BASIC_AUTH_CP, "GetTransactionStatus",
+                        {"transactionId": transaction_id})
+
+    trigger_task = asyncio.create_task(trigger_get_status())
+
     await asyncio.wait_for(
         cp._received_get_transaction_status.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate transactionId in request
     assert cp._get_transaction_status_data is not None

@@ -44,12 +44,13 @@ from ocpp.v201.enums import (
 )
 
 from tzi_charge_point import TziChargePoint
-from utils import get_basic_auth_headers
+from utils import get_basic_auth_headers, build_default_ssl_context
+from trigger import send_call
 
 logging.basicConfig(level=logging.INFO)
 
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
-BASIC_AUTH_CP = os.environ['BASIC_AUTH_CP']
+BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
 CSMS_ACTION_TIMEOUT = int(os.environ['CSMS_ACTION_TIMEOUT'])
@@ -62,10 +63,12 @@ async def test_tc_l_23():
     uri = f'{CSMS_ADDRESS}/{cp_id}'
     headers = get_basic_auth_headers(cp_id, BASIC_AUTH_CP_PASSWORD)
 
+    ssl_ctx = build_default_ssl_context() if CSMS_ADDRESS.startswith('wss://') else None
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
         extra_headers=headers,
+        ssl=ssl_ctx,
     )
     time.sleep(0.5)
 
@@ -80,11 +83,18 @@ async def test_tc_l_23():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Step 1-2: Wait for CSMS to send UnpublishFirmwareRequest
+    # Step 1-2: Trigger CSMS to send UnpublishFirmwareRequest
+    async def trigger_unpublish_firmware():
+        await asyncio.sleep(1)
+        await send_call(cp_id, "UnpublishFirmware", {
+            "checksum": "abc123def456",
+        })
+    trigger_task = asyncio.create_task(trigger_unpublish_firmware())
     await asyncio.wait_for(
         cp._received_unpublish_firmware.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
+    trigger_task.cancel()
 
     # Validate UnpublishFirmwareRequest was received
     assert cp._unpublish_firmware_data is not None
