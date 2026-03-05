@@ -131,7 +131,7 @@ To run the full test suite, register **5 charging points** in your CSMS:
 2. **Configure EVSE topology** on `CP201_SP1`: EVSE 1 with Connector 1 (type `cType2`), and EVSE 2 with Connector 1 for Master Pass tests (TC_C_47, TC_C_49).
 3. **Configure ID tokens** in your CSMS:
    - `VALID_ID_TOKEN` (default `TAG-001`, type `ISO14443`) - status: **Accepted**
-   - `INVALID_ID_TOKEN` (default `100000C02`, type `Cash`) - status: **Invalid/Unknown**
+   - `INVALID_ID_TOKEN` (default `100000C02`, type `ISO14443`) - status: **Invalid/Unknown**
    - `BLOCKED_ID_TOKEN` (default `100000C06`) - status: **Blocked** (for Block C and 1.6J)
    - `EXPIRED_ID_TOKEN` (default `100000C07`) - status: **Expired** (for Block C and 1.6J)
    - `MASTERPASS_ID_TOKEN` - status: **Accepted**, with `MASTERPASS_GROUP_ID` (for Block C)

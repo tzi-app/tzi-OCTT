@@ -79,7 +79,7 @@ Notes:
 | `VALID_ID_TOKEN_2` | `100000C39B` | C group-id/master-pass scenarios |
 | `VALID_ID_TOKEN_TYPE_2` | `Central` | C |
 | `INVALID_ID_TOKEN` | `100000C02` | C, E; 1.6J |
-| `INVALID_ID_TOKEN_TYPE` | `Cash` | C, E |
+| `INVALID_ID_TOKEN_TYPE` | `ISO14443` | C, E |
 | `BLOCKED_ID_TOKEN` | `100000C06` | C; 1.6J |
 | `BLOCKED_ID_TOKEN_TYPE` | `Central` | C |
 | `EXPIRED_ID_TOKEN` | `100000C07` | C; 1.6J |

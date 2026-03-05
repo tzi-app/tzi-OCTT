@@ -1289,6 +1289,12 @@ async def _k_send_set_charging_profile(cp, evse_id, profile):
             f"(evse_id={evse_id}, purpose={profile.get('charging_profile_purpose')}, "
             f"profile_id={profile.get('id')})"
         )
+        # Store offered schedule BEFORE sending so it's available when the CP
+        # responds with NotifyEVChargingSchedule before the call() returns.
+        if profile.get('charging_profile_purpose') == 'TxProfile':
+            offered = _k_extract_schedule(profile)
+            if offered is not None:
+                _k_last_offered_schedule[cp.id] = deepcopy(offered)
         response = await cp.call(call.SetChargingProfile(evse_id=evse_id, charging_profile=profile))
         # CALLERROR may be surfaced as a response object instead of an exception
         # depending on the ocpp stack internals. Treat such responses as failure.
@@ -1300,10 +1306,6 @@ async def _k_send_set_charging_profile(cp, evse_id, profile):
             _k_exclusive_mode.add(cp.id)
             _h_mode_active.discard(cp.id)
             logging.info(f"K-mode confirmed for {cp.id}; H-mode suppressed for this CP")
-        if profile.get('charging_profile_purpose') == 'TxProfile':
-            offered = _k_extract_schedule(profile)
-            if offered is not None:
-                _k_last_offered_schedule[cp.id] = deepcopy(offered)
     except Exception as e:
         if _active_cp_instance.get(cp.id) is not cp:
             return
@@ -1616,15 +1618,26 @@ class ChargePointHandler(ChargePoint):
         # SP1 provisioning only applies to WS (non-TLS) connections.
         # WSS connections rely on trigger API for test actions.
         if self._security_profile == 1 and self.id not in _auto_detect_used:
-            # Post-provisioning mode: always Accepted, action triggered by silence
+            # Post-provisioning mode: always Accepted, action triggered by silence.
+            # When post-prov actions are exhausted, transition to K-mode.
             if self.id in _post_prov_mode_active:
-                self._boot_status = 'Accepted'
-                logging.info(f"Post-provisioning boot for {self.id}: Accepted")
-                return call_result.BootNotification(
-                    current_time=now_iso(),
-                    interval=10,
-                    status=RegistrationStatusEnumType.accepted,
+                prov_exhausted = (
+                    _post_prov_global_index >= len(_POST_PROVISIONING_ACTIONS)
+                    or _POST_PROVISIONING_ACTIONS[_post_prov_global_index] is None
                 )
+                if prov_exhausted and _k_action_index.get(self.id, 0) < len(_SP1_K_PROVISIONING):
+                    _post_prov_mode_active.discard(self.id)
+                    _k_mode_active.add(self.id)
+                    logging.info(f"Post-prov to K-mode transition for {self.id}")
+                    # Fall through to K-mode boot handler below
+                else:
+                    self._boot_status = 'Accepted'
+                    logging.info(f"Post-provisioning boot for {self.id}: Accepted")
+                    return call_result.BootNotification(
+                        current_time=now_iso(),
+                        interval=10,
+                        status=RegistrationStatusEnumType.accepted,
+                    )
 
             # F-mode: always Accepted, action triggered by silence detection
             if self.id in _f_mode_active:
@@ -1806,7 +1819,41 @@ class ChargePointHandler(ChargePoint):
                 status=getattr(RegistrationStatusEnumType, boot_status.lower()),
             )
 
-        # Non-SP1 boots: always Accepted
+        # SP1 CPs that bypassed the provisioning block (e.g., _auto_detect_used
+        # set by E-test no-boot connections) still need K-mode handling.
+        if self._security_profile == 1 and self.id in _auto_detect_used:
+            # Post-prov → K transition when post-prov actions exhausted
+            if self.id in _post_prov_mode_active:
+                prov_exhausted = (
+                    _post_prov_global_index >= len(_POST_PROVISIONING_ACTIONS)
+                    or _POST_PROVISIONING_ACTIONS[_post_prov_global_index] is None
+                )
+                if prov_exhausted and _k_action_index.get(self.id, 0) < len(_SP1_K_PROVISIONING):
+                    _post_prov_mode_active.discard(self.id)
+                    _k_mode_active.add(self.id)
+                    logging.info(f"Post-prov to K-mode transition for {self.id} (auto-detect path)")
+
+            # K → L transition
+            if (
+                self.id in _k_mode_active
+                and _k_action_index.get(self.id, 0) >= len(_SP1_K_PROVISIONING)
+            ):
+                _k_mode_active.discard(self.id)
+                if _l_action_index.get(self.id, 0) < len(_SP1_L_PROVISIONING):
+                    _l_mode_active.add(self.id)
+
+            # K-mode boot handling
+            if self.id in _k_mode_active:
+                self._k_session_index = _k_allocate_session_index(self.id)
+                self._boot_status = 'Accepted'
+                logging.info(f"K-mode boot for {self.id}: Accepted (session_index={self._k_session_index}, auto-detect path)")
+                return call_result.BootNotification(
+                    current_time=now_iso(),
+                    interval=10,
+                    status=RegistrationStatusEnumType.accepted,
+                )
+
+        # Non-SP1 boots (or SP1 with no active mode): always Accepted
         self._boot_status = 'Accepted'
         return call_result.BootNotification(
             current_time=now_iso(),
@@ -2176,7 +2223,7 @@ class ChargePointHandler(ChargePoint):
             asyncio.create_task(self._send_get_transaction_status_after_ended(txn_id))
 
         # K-mode transaction-driven actions (K_58, K_59, K_60, K_70, K_55 renegotiation).
-        if self.id in _k_mode_active:
+        if self.id in _k_mode_active or self._k_renegotiation_pending:
             asyncio.create_task(
                 _k_handle_transaction_event(
                     self,
@@ -2228,8 +2275,8 @@ class ChargePointHandler(ChargePoint):
             f"session_index={_k_session_index(self)}"
         )
         idx = _k_session_index(self)
-        if self.id in _k_mode_active and idx in (25, 26, 27, 28, 29):
-            txn_id = _k_latest_transaction_id.get(self.id)
+        txn_id = _k_latest_transaction_id.get(self.id)
+        if txn_id:
             asyncio.create_task(_k_send_tx_profile_for_transaction(self, txn_id))
         return call_result.NotifyEVChargingNeeds(status='Accepted')
 
@@ -2237,12 +2284,11 @@ class ChargePointHandler(ChargePoint):
     async def on_notify_ev_charging_schedule(self, time_base, charging_schedule, evse_id, **kwargs):
         idx = _k_session_index(self)
         status = GenericStatusEnumType.accepted
-        if self.id in _k_mode_active and idx == 26:
-            # K_55: first schedule exceeds offered limits -> Rejected, then renegotiate.
-            if _k_schedule_exceeds_offer(self.id, charging_schedule) and not self._k_schedule_rejected_once:
-                self._k_schedule_rejected_once = True
-                self._k_renegotiation_pending = True
-                status = GenericStatusEnumType.rejected
+        # K_55: first schedule exceeds offered limits -> Rejected, then renegotiate.
+        if _k_schedule_exceeds_offer(self.id, charging_schedule) and not self._k_schedule_rejected_once:
+            self._k_schedule_rejected_once = True
+            self._k_renegotiation_pending = True
+            status = GenericStatusEnumType.rejected
         logging.info(
             f"NotifyEVChargingSchedule from {self.id}: evse_id={evse_id}, "
             f"session_index={idx}, status={status}"
@@ -4039,12 +4085,7 @@ def _rollback_k_index_on_disconnect(cp):
 async def _k_handle_transaction_event(cp, *, event_type_text, trigger_reason_text,
                                       charging_state_text, transaction_id):
     """Handle transaction-driven smart charging actions for later K tests."""
-    if cp.id not in _k_mode_active:
-        return
-
     idx = _k_session_index(cp)
-    if idx < 0:
-        return
 
     txn_id = transaction_id or _k_latest_transaction_id.get(cp.id)
     if txn_id is None:
@@ -4059,7 +4100,7 @@ async def _k_handle_transaction_event(cp, *, event_type_text, trigger_reason_tex
         return
 
     # K_55: if EV schedule exceeded limits and was rejected, renegotiate.
-    if idx == 26 and cp._k_renegotiation_pending and not cp._k_initiated_set_sent:
+    if cp._k_renegotiation_pending and not cp._k_initiated_set_sent:
         cp._k_renegotiation_pending = False
         cp._k_initiated_set_sent = True
         await asyncio.sleep(0.5)
