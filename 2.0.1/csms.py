@@ -2042,6 +2042,17 @@ class ChargePointHandler(ChargePoint):
         except Exception as e:
             logging.error(f"Failed to send CertificateSignedRequest to {self.id}: {e}")
 
+    async def _send_get_transaction_status_after_ended(self, transaction_id):
+        """Send GetTransactionStatusRequest after receiving Ended+offline (E_31)."""
+        await asyncio.sleep(2)
+        if not self._connection.open:
+            return
+        try:
+            logging.info(f"Sending GetTransactionStatusRequest to {self.id} (txn={transaction_id})")
+            await self.call(call.GetTransactionStatus(transaction_id=transaction_id))
+        except Exception as e:
+            logging.warning(f"GetTransactionStatus call failed for {self.id}: {e}")
+
     @on(Action.authorize)
     async def on_authorize(self, id_token, certificate=None,
                            iso15118_certificate_hash_data=None, **kwargs):
@@ -2159,6 +2170,10 @@ class ChargePointHandler(ChargePoint):
         # I_02: totalCost must be present on Ended transaction response.
         if event_type_text == 'Ended':
             response_kwargs['total_cost'] = _estimate_transaction_total_cost(self.id, txn_id)
+
+        # E_31: after receiving Ended+offline, proactively send GetTransactionStatusRequest.
+        if event_type_text == 'Ended' and kwargs.get('offline', False) and txn_id:
+            asyncio.create_task(self._send_get_transaction_status_after_ended(txn_id))
 
         # K-mode transaction-driven actions (K_58, K_59, K_60, K_70, K_55 renegotiation).
         if self.id in _k_mode_active:
