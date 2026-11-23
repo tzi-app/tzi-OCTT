@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: AuthEnabled is NOT implemented with mutability ReadOnly and the value set to false
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to request the Charging Station to start a transaction.
+
+    CSMS->>CS: RequestStartTransactionRequest
+    Note over CSMS: Validation: idToken.idToken must be <Configured valid_idtoken_idtoken><br>idToken.type must be <Configured valid_idtoken_type>
+
+    CS-->>CSMS: RequestStartTransactionResponse (status = Accepted, transactionId omitted)
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = RemoteStart, transactionInfo.remoteStartId = <By Test System generated remoteStartID>, eventType = Started)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted<br>(State is Authorized and _EVConnected = false)

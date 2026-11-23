@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = LogStatusNotification)
+    Note over CSMS: Validation: requestedMessage must be LogStatusNotification
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+    CS->>CSMS: LogStatusNotificationRequest (status = Idle)
+    CSMS-->>CS: LogStatusNotificationResponse

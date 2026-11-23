@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: CertificateInstalled<br>A pre configured certificate of the specified certificateType will be installed
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send an InstallCertificateRequest<br>with certificateType <Specified certificateType>
+
+    CSMS->>CS: InstallCertificateRequest (certificateType = <Specified certificateType>, certificate = <configured certificate>)
+    Note over CSMS: Validation: certificateType must be <Specified certificateType><br>certificate must be <The configured certificate of the specified certificateType>
+
+    CS-->>CSMS: InstallCertificateResponse (status = Accepted)
+
+    Note over CS,CSMS: Post condition: Certificate of the specified certificateType<br>is stored at the Charging Station

@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the availability of the station to inoperative
+
+    CSMS->>CS: ChangeAvailabilityRequest (operationalStatus = Inoperative)
+    Note over CSMS: Validation: operationalStatus must be Inoperative,<br>evseId must be omitted,<br>connectorId must be omitted
+    CS-->>CSMS: ChangeAvailabilityResponse (status = Scheduled)
+
+    loop For all unoccupied connectors
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Unavailable)
+        CSMS-->>CS: StatusNotificationResponse
+    end
+
+    Note over CS,CSMS: Wait for <Configured Transaction Duration>
+
+    Note over CS,CSMS: Execute Reusable State StopAuthorized
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    Note over CS,CSMS: Execute Reusable State EVDisconnected
+
+    CS->>CSMS: StatusNotificationRequest (configured connector, connectorStatus = Unavailable)
+    CSMS-->>CS: StatusNotificationResponse
+
+    Note over CS,CSMS: Post scenario validation: A respond to report the state of a connector<br>has been received for all connectors

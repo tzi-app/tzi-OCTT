@@ -1,0 +1,43 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot the Charging Station with status Immediate
+
+    CSMS->>CS: ResetRequest (type = Immediate)
+    Note over CSMS: Validation: type must be Immediate,<br>evseId must be omitted
+    CS-->>CSMS: ResetResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = ResetCommand,<br>transactionInfo.chargingState = EVConnected,<br>transactionInfo.stoppedReason = ImmediateReset, idToken omitted)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: BootNotificationRequest (reason = RemoteReset)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+
+    alt StatusNotificationRequest
+        CS->>CSMS: StatusNotificationRequest (configured connectorId, connectorStatus = Occupied)
+        CSMS-->>CS: StatusNotificationResponse
+    else NotifyEventRequest
+        CS->>CSMS: NotifyEventRequest (configured connectorId, trigger = Delta, actualValue = "Occupied",<br>component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    loop For each other connector
+        alt StatusNotificationRequest
+            CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+            CSMS-->>CS: StatusNotificationResponse
+        else NotifyEventRequest
+            CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available",<br>component.name = "Connector", variable.name = "AvailabilityState")
+            CSMS-->>CS: NotifyEventResponse
+        end
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

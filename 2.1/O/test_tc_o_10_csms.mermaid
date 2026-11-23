@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports sending a SetDisplayMessageRequest<br>with a transactionId for a transaction that does not exist
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a display message for a specific transaction
+
+    CSMS->>CS: SetDisplayMessageRequest (message.transactionId, message.priority)
+    Note over CSMS: Validation: message.transactionId not omitted AND<br>message.priority is <Configured Priority>
+
+    CS-->>CSMS: SetDisplayMessageResponse (status = UnknownTransaction)
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send a ReserveNowRequest for an unspecified EVSE
+
+    loop Repeated for the amount of EVSEs configured for the Test System
+        CSMS->>CS: ReserveNowRequest (no evseId, no connectorType, idToken)
+        Note over CSMS: Validation: evseId must be omitted<br>connectorType must be omitted<br>idToken.idToken = Configured valid_idtoken_idtoken<br>idToken.type = Configured valid_idtoken_type
+        CS-->>CSMS: ReserveNowResponse (status = Accepted)
+    end
+
+    Note over CS,CSMS: Step 3 is executed after the last ReserveNowRequest from step 1 has been sent<br>The Test System notifies the CSMS about the current state of all connectors
+
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Reserved)
+    CSMS-->>CS: StatusNotificationResponse
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Reserved, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: NotifyEventResponse

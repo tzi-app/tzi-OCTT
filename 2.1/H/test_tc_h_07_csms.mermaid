@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send a ReserveNowRequest for a specific EVSE
+
+    CSMS->>CS: ReserveNowRequest (expiryDateTime = current time + configured transaction duration)
+    Note over CSMS: Validation: evseId must be the configured evseId<br>connectorType must be omitted<br>idToken.idToken = configured valid_idtoken_idtoken<br>idToken.type = configured valid_idtoken_type
+    CS-->>CSMS: ReserveNowResponse (status = Accepted)
+
+    Note over CS,CSMS: Steps 3-4: Test System notifies the CSMS about the current state of the connector(s) of the configured EVSE
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Reserved)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Reserved", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: CSMS responds accordingly (StatusNotificationResponse / NotifyEventResponse)
+
+    Note over CS: Test System waits until the expiryDateTime from step 1 expires
+
+    Note over CS,CSMS: Steps 5-6: Test System notifies the CSMS about the current state of the connector(s) of the configured EVSE
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: CSMS responds accordingly (StatusNotificationResponse / NotifyEventResponse)
+
+    CS->>CSMS: ReservationStatusUpdateRequest (reservationUpdateStatus = Expired, reservationId = id received at step 1)
+    CSMS-->>CS: ReservationStatusUpdateResponse

@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: CSMS is configured with a tariff which is based on energy consumed
+
+    Note over CS,CSMS: Execute Reusable State EVConnectedPreSession<br>The TransactionEventRequest contains the MeterValue field<br>sampledValue[0].value 1000<br>sampledValue[0].context Transaction.Begin
+    Note over CS,CSMS: Execute Reusable State Authorized
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+    Note over CS,CSMS: Execute Reusable State StopAuthorized
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of the configured connector
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CSMS-->>CS: StatusNotificationResponse
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = EVCommunicationLost, eventType = Ended, transactionInfo.chargingState = Idle, transactionInfo.stoppedReason = EVDisconnected, meterValue[0].sampledValue[0].value = 6000, meterValue[0].sampledValue[0].context = Transaction.End)
+    CSMS-->>CS: TransactionEventResponse (totalCost)
+    Note over CSMS: Validation: TransactionEventResponse<br>totalCost must not be omitted

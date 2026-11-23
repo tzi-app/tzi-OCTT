@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: Close WebSocket connection
+    Note over CS: Wait a number of seconds equal to <Configured Transaction Duration>
+    CS->>CSMS: Reconnect to the CSMS
+
+    CSMS->>CS: GetTransactionStatusRequest
+    Note over CSMS: Validation: transactionId must be omitted
+    CS-->>CSMS: GetTransactionStatusResponse (ongoingIndicator omitted, messagesInQueue = true)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, meterValues present, offline = true)
+    CSMS-->>CS: TransactionEventResponse

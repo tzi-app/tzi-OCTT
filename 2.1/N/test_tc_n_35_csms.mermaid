@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: Charging Station has log information available
+
+    CSMS->>CS: GetLogRequest
+    Note over CSMS: Validation: GetLogRequest<br>- logType SecurityLog
+    CS-->>CSMS: GetLogResponse (status = Accepted)
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploading, requestId = same Id as the GetLogRequest)
+    CSMS-->>CS: LogStatusNotificationResponse
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploaded, requestId = same Id as the GetLogRequest)
+    CS-->>CSMS: LogStatusNotificationResponse
+    Note over CS,CSMS: Step 6 is drawn as the header states it (Test System responds).<br>The header probably means the CSMS responds, as in step 4.

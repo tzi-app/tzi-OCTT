@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS is configured to first respond to a<br>BootNotificationRequest with status Pending
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation (Step 2): BootNotificationResponse<br>status must be Pending
+
+    alt interval in BootNotificationResponse equals 0
+        Note over CS: Test System waits Configured heartbeatInterval seconds<br>before sending another BootNotificationRequest
+    else interval in BootNotificationResponse > 0
+        Note over CS: Test System waits the interval provided in the BootNotificationResponse<br>before sending another BootNotificationRequest
+    end
+
+    opt During this interval the CSMS may send messages
+        CSMS->>CS: Messages to retrieve information (use cases B06, B07, B08) or SetVariablesRequest (use case B05)
+        CS-->>CSMS: Test System responds to these messages
+    end
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation (listed under Step 3 in the header): BootNotificationResponse<br>status must be Accepted
+
+    Note over CS,CSMS: Step 5: The Test System notifies the CSMS about the current state of all connectors
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: CSMS responds accordingly

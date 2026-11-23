@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: CSMS requests ClearVariableMonitoring ItemsPerMessage from CS
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for:<br>- all DeltaMonitoring
+
+    CSMS->>CS: GetMonitoringReportRequest (monitoringCriteria = DeltaMonitoring)
+    Note over CSMS: Validation: monitoringCriteria = DeltaMonitoring<br>componentVariable is omitted
+    CS-->>CSMS: GetMonitoringReportResponse (status = EmptyResultSet)
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for:<br>- all ThresholdMonitoring
+
+    CSMS->>CS: GetMonitoringReportRequest (monitoringCriteria = ThresholdMonitoring)
+    Note over CSMS: Validation: monitoringCriteria = ThresholdMonitoring<br>componentVariable is omitted
+    CS-->>CSMS: GetMonitoringReportResponse (status = Accepted)
+
+    loop Repeated as often as needed to report all configuration variables
+        CS->>CSMS: NotifyMonitoringReportRequest
+        CSMS-->>CS: NotifyMonitoringReportResponse
+    end
+
+    Note over CS,CSMS: Post scenario validation: Check that CSMS shows the Threshold monitors

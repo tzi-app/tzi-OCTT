@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports local cost calculation by CS
+    Note over CS,CSMS: Prerequisite: CS has TariffCtrlr.Enabled[Tariff] = true
+    Note over CS,CSMS: Prerequisite: CS has TariffCtrlr.MaxElements[Tariff] > 0
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the tariff of the transaction
+
+    CSMS->>CS: ChangeTransactionTariffRequest
+    Note over CSMS: Validation: transactionId must be <transaction id>
+
+    CS-->>CSMS: ChangeTransactionTariffResponse (status = TooManyElements)

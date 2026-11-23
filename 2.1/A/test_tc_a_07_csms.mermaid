@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 3
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    CS->>CSMS: Terminate connection, initiate TLS handshake, Client Hello
+    CSMS-->>CS: Server Hello (with Configured server certificate)
+
+    Note over CS: Validation (before finishing the TLS handshake):<br>The CSMS must use TLS version 1.2 or above<br>At least the following cipher suites must be supported:<br>TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256<br>AND TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384<br>AND TLS_RSA_WITH_AES_128_GCM_SHA256<br>AND TLS_RSA_WITH_AES_256_GCM_SHA384
+    CS->>CSMS: Configured client certificate, Client Key Exchange, Certificate verify, Change Cipher Spec, Finished
+
+    CSMS-->>CS: Change Cipher Spec, Finished
+
+    CS->>CSMS: HTTP upgrade request
+    CSMS-->>CS: Upgrade to (secured) WebSocket connection
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse with status Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    alt StatusNotificationRequest
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+        CSMS-->>CS: StatusNotificationResponse
+    else NotifyEventRequest
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end

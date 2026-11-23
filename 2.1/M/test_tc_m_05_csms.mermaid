@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send an InstallCertificateRequest<br>with certificateType CSMSRootCertificate
+
+    CSMS->>CS: InstallCertificateRequest (certificateType = CSMSRootCertificate, certificate)
+    Note over CSMS: Validation: certificateType must be CSMSRootCertificate<br>certificate contains <A certificate>
+
+    CS-->>CSMS: InstallCertificateResponse (status = Failed)

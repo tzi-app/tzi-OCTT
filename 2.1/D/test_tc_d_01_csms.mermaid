@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    opt This step is optional
+        CSMS->>CS: GetLocalListVersionRequest
+        CS-->>CSMS: GetLocalListVersionResponse (versionNumber = 1)
+    end
+
+    CSMS->>CS: SendLocalListRequest
+    Note over CSMS: Validation: SendLocalListRequest<br>- updateType Full<br>- versionNumber bigger than 0<br>- localAuthorizationList not empty<br>- localAuthorizationList[n].idTokenInfo not empty
+    CS-->>CSMS: SendLocalListResponse (status = Accepted)
+
+    Note over CS,CSMS: Note: If the Local Authorization List is too big for one message, step 1 and 2 will be repeated

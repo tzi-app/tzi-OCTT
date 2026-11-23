@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS configured for central cost calculation
+    Note over CS,CSMS: Prerequisite: CSMS supports payments using dynamic QR codes
+    Note over CS,CSMS: Prerequisite: CSMS supports url templates for QR code payments<br>containing at least placeholders {chargingstationid} and {totp}
+    Note over CS,CSMS: Test System has:<br>WebPaymentsCtrlr.Enabled is true<br>WebPaymentsCtrlr.URLTemplate is #lt#base-url#gt#/{chargingstationid}/{evse}/{totp}/{version}<br>WebPaymentsCtrlr.ValidityTime is 30<br>WebPaymentsCtrlr.SharedSecret is mysharedsecret<br>WebPaymentsCtrlr.Length is 8<br>WebPaymentsCtrlr.TOTPVersion is 1
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to perform a payment and start a transaction via QR code webpage<br>maxenergy is 20000<br>qrUrl is #lt#Configured QR base url#gt# extended with:<br>{chargingstationId} is #lt#configured charging station id#gt#<br>{totp} is #lt#valid totp#gt#<br>{evseId} is #lt#configured evse#gt#<br>{version} is 1
+
+    CSMS->>CS: RequestStartTransactionRequest
+    Note over CSMS: Validation: idToken.idToken must be #lt#PspRef#gt#<br>idToken.type must be DirectPayment
+
+    CS-->>CSMS: RequestStartTransactionResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = RemoteStart,<br>idToken.idToken = #lt#PspRef#gt#, idToken.type = DirectPayment,<br>transactionInfo.transactionId = #lt#transactionId#gt#,<br>transactionInfo.remoteStartId = #lt#remoteStartId#gt#,<br>meterValue[0].timestamp = #lt#not omitted#gt#,<br>meterValue[0].sampledValue[0].value = 10000,<br>meterValue[0].sampledValue[0].context = Transaction.Begin)
+
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>transactionLimit.maxEnergy must be 20000
+
+    Note over CS,CSMS: Post scenario validations: N/a

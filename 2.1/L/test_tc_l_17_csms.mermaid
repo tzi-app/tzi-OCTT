@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CS as Local Controller (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: PublishFirmwareRequest
+    Note over CSMS: Validation: PublishFirmwareRequest<br>location must be <Configured firmware_location>
+    CS-->>CSMS: PublishFirmwareResponse (status = Accepted)
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = Downloading)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = Downloaded)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = ChecksumVerified)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = Published, location = <Configured firmware_location>)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

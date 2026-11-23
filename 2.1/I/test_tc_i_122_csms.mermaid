@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports local cost calculation by CS
+    Note over CS,CSMS: Prerequisite: CS has TariffCtrlr.Enabled[Tariff] = true<br>CS has TariffCtrlr.Enabled[Cost] = true<br>CS has TariffCtrlr.Enabled[RunningCost] = true<br>CS has TariffCtrlr.Interval[Cost] = 30<br>CS has TariffCtrlr.MaxElements[Tariff] > 0<br>CS has TariffCtrlr.ConditionsSupported[Tariff] = true
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a default tariff on EVSE 0 with<br>- Price for energy with a taxRate<br>- Price for chargingTime with a taxRate<br>- Price for idleTime with a taxRate<br>- Price for fixedFee with a taxRate<br>- Price for minCost with a taxRate<br>- Price for maxCost with a taxRate
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 0, tariff)
+    Note over CSMS: Validation: SetDefaultTariffRequest<br>evseId 0<br>tariff.energy must be not omitted<br>tariff.energy.taxRates must be not omitted<br>tariff.chargingTime must be not omitted<br>tariff.chargingTime.taxRates must be not omitted<br>tariff.idleTime must be not omitted<br>tariff.idleTime.taxRates must be not omitted<br>tariff.fixedFee must be not omitted<br>tariff.fixedFee.taxRates must be not omitted<br>tariff.minCost must be not omitted<br>tariff.minCost.exclTax must be not omitted<br>tariff.minCost.inclTax must be not omitted<br>tariff.minCost.taxRates must be not omitted<br>tariff.maxCost must be not omitted<br>tariff.maxCost.exclTax must be not omitted<br>tariff.maxCost.inclTax must be not omitted<br>tariff.maxCost.taxRates must be not omitted
+
+    CS-->>CSMS: SetDefaultTariffResponse (status = Accepted)
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = RunningCost, costDetails)
+    Note right of CS: costDetails.failureToCalculate omitted<br>costDetails.failureReason omitted<br>costDetails.totalCost.currency EUR<br>costDetails.totalCost.typeOfCost NormalCost<br>costDetails.totalCost.reservation omitted<br>costDetails.totalCost.fixed.exclTax 15<br>costDetails.totalCost.fixed.inclTax 15.75<br>costDetails.totalCost.fixed.taxRates[0].type t5_0<br>costDetails.totalCost.fixed.taxRates[0].tax 5.0
+    Note right of CS: costDetails.chargingPeriods[0].tariffId = SetDefaultTariffRequest.tariff.tariffId of step 1<br>costDetails.chargingPeriods[0].startPeriod = txStartDateTime<br>costDetails.chargingPeriods[0].dimensions[0].type ChargingTime<br>costDetails.chargingPeriods[0].dimensions[0].volume 15<br>costDetails.chargingPeriods[0].dimensions[1].type Energy<br>costDetails.chargingPeriods[0].dimensions[1].volume 12
+
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

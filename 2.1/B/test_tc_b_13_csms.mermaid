@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to retrieve a FullInventory report
+    CSMS->>CS: GetBaseReportRequest (requestId, reportBase = FullInventory)
+    Note over CSMS: Validation: requestId has integer value >= 0<br>reportBase = FullInventory
+    CS-->>CSMS: GetBaseReportResponse
+
+    Note over CS,CSMS: Post scenario validation: CSMS receives all NotifyReportRequest messages<br>for this requestId and is able to show the result of full inventory to an operator

@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: EVConnectedPreSession<br>Simulates that the EV and EVSE of the simulated Charging Station are connected
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Step 1: The Test System notifies the CSMS about the status change of the connector
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Occupied)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Occupied, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: CSMS responds accordingly
+
+    alt State is Authorized
+        CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = CablePluggedIn, transactionInfo.chargingState = EVConnected, evse.id = Configured evseId, evse.connectorId = Configured connectorId)
+    else State is not Authorized
+        CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = CablePluggedIn, transactionInfo.chargingState = EVConnected, evse.id = Configured evseId, evse.connectorId = Configured connectorId)
+    end
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post condition: State is EVConnectedPreSession

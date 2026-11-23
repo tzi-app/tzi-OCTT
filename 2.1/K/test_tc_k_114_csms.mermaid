@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EVConnectedPreSession
+    Note over CS,CSMS: Execute Reusable State Authorized
+    Note over CS,CSMS: Execute Reusable State ISO15118SmartCharging (iso15118-20)
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = <Configured evseId>, maxScheduleTuples = 1, chargingNeeds.requestedEnergyTransfer = AC_three_phase, chargingNeeds.controlMode = ScheduledControl)
+    Note right of CS: chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_three_phase, AC_BPT]<br>chargingNeeds.v2xChargingParameters.maxChargePower = 6000<br>chargingNeeds.v2xChargingParameters.maxDischargePower = 0
+
+    CSMS-->>CS: NotifyEVChargingNeedsResponse
+    Note over CSMS: Validation: status must be Accepted or Processing
+
+    Note over CS,CSMS: If NotifyEVChargingNeedsResponse status was Processing,<br>the Test System will wait 60 seconds for the request
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfilePurpose must be TxProfile<br>transactionId must be <Provided transactionId from before><br>chargingProfile.chargingSchedule must be size = 1
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingScheduleRequest (evseId = <Configured evseId>, chargingSchedule = <ChargingSchedule provided at step 3>)
+
+    CSMS-->>CS: NotifyEVChargingScheduleResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: Post scenario validations: N/a

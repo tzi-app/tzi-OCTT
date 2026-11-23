@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Bidirectional Power Transfer
+    Note over CS,CSMS: Prerequisite: CSMS has Frequency support
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxDefaultProfile Charging Profile<br>with chargingSchedulePeriod with operationMode LocalFrequency<br>and v2xBaseline and v2xFreqWattCurve and v2xSignalWattCurve
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfilePurpose = TxDefaultProfile, operationMode = LocalFrequency)
+    Note over CSMS: Validation (Step 1, SetChargingProfileRequest):<br>chargingProfile.chargingProfilePurpose must be TxDefaultProfile<br>chargingSchedule[0].chargingRateUnit must be W<br>In chargingSchedule[0].chargingSchedulePeriod[0]:<br>operationMode must be LocalFrequency<br>limit, limit_L2, limit_L3 must be omitted<br>dischargeLimit, dischargeLimit_L2, dischargeLimit_L3 must be omitted<br>setpoint, setpoint_L2, setpoint_L3 must be omitted<br>setpointReactive, setpointReactive_L2, setpointReactive_L3 must be omitted<br>v2xBaseline must not be omitted<br>v2xFreqWattCurve size must be >= 2<br>v2xFreqWattCurve[*].frequency and power must not be omitted<br>v2xSignalWattCurve size must be >= 2<br>v2xSignalWattCurve[*].signal and power must not be omitted
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send out a AFRRSignalRequest with a given value for signal
+
+    CSMS->>CS: AFRRSignalRequest (signal)
+    Note over CSMS: Validation (Step 3, AFRRSignalRequest):<br>signal must be the value that was provided in the manual action before step 3
+    CS-->>CSMS: AFRRSignalResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

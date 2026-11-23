@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports periodic event streams
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to retrieve a list of existing event streams from the Charging Station
+
+    CSMS->>CS: GetPeriodicEventStreamRequest
+    CS-->>CSMS: GetPeriodicEventStreamResponse (constantStreamData[0]: id = 2, variableMonitoringId = 3, params.interval = 10, params.values = 30, constantStreamData[1]: id = 3, variableMonitoringId = 4, params.interval = 10, params.values = 30)
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

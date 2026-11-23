@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: ISO15118SmartCharging
+    Note over CS,CSMS: Argument: iso15118Version = iso15118-2 or iso15118-20 (iso15118-2 assumed if not specified)
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    alt iso15118Version is iso15118-2
+        CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = Configured evseId, maxScheduleTuples = 2, chargingNeeds.requestedEnergyTransfer = AC_three_phase, acChargingParameters.energyAmount = 50000, evMinCurrent = 0, evMaxCurrent = 32, evMaxVoltage = 230)
+    else iso15118Version is iso15118-20
+        CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = Configured evseId, maxScheduleTuples = 2, chargingNeeds.requestedEnergyTransfer = AC_single_phase, availableEnergyTransfer = [AC_single_phase, AC_three_phase, AC_BPT], controlMode = ScheduledControl, v2xChargingParameters.maxChargePower = 10000, maxDischargePower = 10000)
+    end
+
+    CSMS-->>CS: NotifyEVChargingNeedsResponse
+    Note over CSMS: Validation: status must be Accepted or Processing
+
+    Note over CS,CSMS: If NotifyEVChargingNeedsResponse status was Processing,<br>the Test System will wait 60 seconds for the request
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfilePurpose must be TxProfile<br>transactionId must be the transactionId provided before
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingScheduleRequest (evseId = Configured evseId, chargingSchedule = ChargingSchedule provided at step 3)
+    CSMS-->>CS: NotifyEVChargingScheduleResponse
+    Note over CSMS: Validation (listed in header under Step 4):<br>NotifyEVChargingScheduleResponse status must be Accepted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = ChargingStateChanged, transactionInfo.chargingState = Charging)
+    CSMS-->>CS: TransactionEventResponse

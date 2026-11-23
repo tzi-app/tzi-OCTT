@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    loop Steps 1 - 5 repeated for each hash algorithm (SHA256, SHA384, SHA512)
+        Note over CS,CSMS: Step 1: CertificateInstalled with certificateType CSMSRootCertificate
+
+        Note over CS,CSMS: Manual Action: Request the CSMS to send a DeleteCertificateRequest
+
+        CSMS->>CS: GetInstalledCertificateIdsRequest
+        Note over CSMS: Validation: certificateType contains CSMSRootCertificate OR is omitted
+
+        CS-->>CSMS: GetInstalledCertificateIdsResponse (status = Accepted,<br>certificateHashDataChain[0].certificateType = CSMSRootCertificate,<br>certificateHashDataChain[0].certificateHashData.hashAlgorithm = SHA256)
+        Note right of CS: hashAlgorithm is SHA256 as listed in the header,<br>SHA384 / SHA512 in the repeated iterations
+
+        CSMS->>CS: DeleteCertificateRequest (certificateHashData)
+        Note over CSMS: Validation: certificateHashData is the<br>certificateHashData returned at Step 3
+
+        CS-->>CSMS: DeleteCertificateResponse (status = Accepted)
+    end

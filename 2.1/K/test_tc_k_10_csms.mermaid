@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfile.id = <Configured chargingProfileId>)
+    Note over CSMS: Validation: Message SetChargingProfileRequest<br>evseId 0 AND<br>chargingProfile.stackLevel <Configured stackLevel> AND<br>chargingProfile.chargingProfilePurpose TxDefaultProfile AND<br>chargingProfile.chargingProfileKind Absolute AND<br>chargingProfile.chargingSchedule.startSchedule <Not omitted> AND<br>chargingProfile.chargingSchedule.chargingRateUnit <Configured ChargingRateUnit> AND<br>chargingProfile.chargingSchedule.chargingSchedulePeriod.startPeriod 0 AND<br>chargingProfile.chargingSchedule.duration <Configured duration><br>chargingProfile.chargingSchedule.chargingSchedulePeriod.limit 6.0 or 6000.0 AND<br>chargingProfile.chargingSchedule.chargingSchedulePeriod.numberPhases <Configured numberPhases> where <Configured numberPhases> not 3 OR<br>chargingProfile.chargingSchedule.chargingSchedulePeriod.numberPhases <Configured numberPhases> or <omit> where <Configured numberPhases> 3
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

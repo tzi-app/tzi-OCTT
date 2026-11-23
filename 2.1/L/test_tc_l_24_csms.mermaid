@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Local Controller (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: PublishFirmwareRequest
+    Note over CSMS: Validation: Message PublishFirmwareRequest<br>location must be <Configured firmware_location>
+    CS-->>CSMS: PublishFirmwareResponse (status = Accepted)
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = Downloading)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse
+
+    CS->>CSMS: PublishFirmwareStatusNotificationRequest (status = DownloadFailed)
+    CSMS-->>CS: PublishFirmwareStatusNotificationResponse

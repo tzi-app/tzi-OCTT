@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: A message with <Configured_Priority> is configured
+
+    CSMS->>CS: GetDisplayMessagesRequest (priority = <Configured_Priority>, requestId = <Generated Id>)
+    Note over CSMS: Validation: GetDisplayMessagesRequest<br>- priority <Configured_Priority><br>- id <Omitted><br>- state <Omitted><br>- requestId <Generated Id>
+    CS-->>CSMS: GetDisplayMessagesResponse (status = Accepted)
+    CS->>CSMS: NotifyDisplayMessagesRequest
+    CSMS-->>CS: NotifyDisplayMessagesResponse

@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    loop Every configured sampled Meter Values interval, until three MeterValues have been sent
+        CS->>CSMS: TransactionEventRequest (triggerReason = MeterValuePeriodic, eventType = Updated, timestamp, sampledValue.context = Sample.Periodic)
+        Note right of CS: Intervals between the timestamps equal the configured sampled Meter Values interval
+        CSMS-->>CS: TransactionEventResponse
+    end
+
+    Note over CS,CSMS: The Test System ends the testcase after three MeterValues

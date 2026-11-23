@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Configuration State: This test case activates monitoring on<br>Component "EVSE", evse <Configured evseId>, variable "AvailabilityState", monitor type Delta<br>It assumes that no monitor is active on this variable prior to the test<br>Note 1: this is a required variable for which a monitor can be expected to exist or it can be configured<br>Note 2: Any other component/variable combination that supports monitoring could also be used
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request CSMS to install monitors on<br>EVSE #<Configured evseId>, AvailabilityState, Delta, severity 8
+
+    CSMS->>CS: SetVariableMonitoringRequest (EVSE #<Configured evseId>, AvailabilityState, type = Delta, severity = 8)
+    Note over CSMS: Validation: CSMS sends SetVariableMonitoringRequest with<br>setMonitoringData[0].value = 1 (recommended value for Delta monitor)<br>setMonitoringData[0].type = Delta<br>setMonitoringData[0].severity = 8<br>setMonitoringData[0].component.name = "EVSE"<br>setMonitoringData[0].component.evse.id = <Configured evseId><br>setMonitoringData[0].variable.name = "AvailabilityState"
+
+    CS-->>CSMS: SetVariableMonitoringResponse (setMonitoringResult[0].status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/A

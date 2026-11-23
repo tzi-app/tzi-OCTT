@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = Heartbeat)
+    Note over CSMS: Validation: requestedMessage must be Heartbeat
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+    CS->>CSMS: HeartbeatRequest
+    CSMS-->>CS: HeartbeatResponse

@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: GetInstalledCertificates
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send a GetInstalledCertificateIdsRequest<br>with certificateType <Specified certificateType>
+
+    CSMS->>CS: GetInstalledCertificateIdsRequest (certificateType = <Specified certificateType>)
+    Note over CSMS: Validation: certificateType must be <Specified certificateType>
+
+    CS-->>CSMS: GetInstalledCertificateIdsResponse (status = Accepted, certificateHashDataChain[0].certificateType = <Specified certificateType>, certificateHashDataChain[0].certificateHashData = <HashData from the configured certificate>)
+    Note right of CS: certificateHashData contains the HashData from the configured<br>certificate of the specified certificateType
+
+    Note over CS,CSMS: Post condition: Certificate of the specified certificateType<br>is retrieved from the Charging Station.

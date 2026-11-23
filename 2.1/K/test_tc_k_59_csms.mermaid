@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a<br>Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): State is Authorized AND<br>EVConnectedPreSession AND<br>ISO15118SmartCharging
+
+    Note over CS,CSMS: Manual Action: Trigger SetChargingProfile<br>- evseId <Configured evseId><br>- chargingProfilePurpose TxProfile<br>- transactionId <Provided transactionId from before>
+
+    CSMS->>CS: SetChargingProfileRequest (evseId = <Configured evseId>, chargingProfilePurpose = TxProfile, transactionId = <Provided transactionId from before>)
+    Note over CSMS: Validation (Step 1): SetChargingProfileRequest<br>- evseId <Configured evseId><br>- chargingProfilePurpose TxProfile<br>- transactionId <Provided transactionId from before>
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = <Configured evseId>, maxScheduleTuples & chargingNeeds = <Configured values from mock EV>)
+
+    CSMS-->>CS: NotifyEVChargingNeedsResponse (status = Accepted or Processing)
+    Note over CSMS: Validation (Step 4): NotifyEVChargingNeedsResponse<br>- status Accepted or Processing
+
+    opt NotifyEVChargingNeedsResponse status was Processing
+        Note over CS: Test System will wait 60 seconds for the SetChargingProfileRequest
+    end
+
+    CSMS->>CS: SetChargingProfileRequest (evseId = <Configured evseId>, chargingProfilePurpose = TxProfile, transactionId = <Provided transactionId from before>)
+    Note over CSMS: Validation (Step 5): SetChargingProfileRequest<br>- evseId <Configured evseId><br>- chargingProfilePurpose TxProfile<br>- transactionId <Provided transactionId from before>
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingScheduleRequest (evseId = <Configured evseId>, chargingSchedule = <ChargingSchedule provided at step 3>)
+
+    CSMS-->>CS: NotifyEVChargingScheduleResponse (status = Accepted)
+    Note over CSMS: Validation (Step 8): NotifyEVChargingScheduleResponse<br>- status Accepted
+
+    Note over CS,CSMS: Post scenario validations: N/a

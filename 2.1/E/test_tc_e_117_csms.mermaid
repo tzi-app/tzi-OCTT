@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration State: SmartChargingCtrlr.ChargingProfilePersistence is <absent>
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a Charging Profile of type TxProfile on <transactionId>
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfile.chargingProfilePurpose = TxProfile)
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose must be TxProfile
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: The Test System disconnects the connection
+    Note over CS,CSMS: The Test System waits the <Configured transaction duration>
+    Note over CS,CSMS: The Test System restores the connection
+
+    CS->>CSMS: BootNotificationRequest
+    CSMS-->>CS: BootNotificationResponse (status = Accepted)
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    CS->>CSMS: NotifyEventRequest (eventData[0].trigger = Delta, component.name = "Connector", variable.name = "AvailabilityState")
+    Note right of CS: Configured EVSE.Connector: eventData[0].actualValue = "Occupied"<br>Other connectors: eventData[0].actualValue = "Available"
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: SecurityEventNotificationRequest (type = StartupOfTheDevice OR ResetOrReboot)
+    CSMS-->>CS: SecurityEventNotificationResponse
+
+    CS->>CSMS: NotifyEventRequest (eventData.trigger = Delta, component.name = ElectricalFeed, variable.name = Problem, actualValue = true)
+    Note right of CS: eventData.transactionId = <transactionId from this transaction><br>eventData.eventNotificationType = HardWiredNotification<br>eventData.severity = 3
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: NotifyEventRequest (same content as step 9, but eventData.actualValue = false)
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = TxResumed, transactionInfo.transactionId = <transactionId>, transactionInfo.chargingState = Charging)
+    CSMS-->>CS: TransactionEventResponse
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfile identical to Step 1)
+    Note over CSMS: Validation: SetChargingProfileRequest must contain an identical chargingProfile<br>as in Step 1 or identical as of time of Step 15
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)

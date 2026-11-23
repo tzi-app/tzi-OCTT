@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EVConnectedPreSession
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured invalid_idtoken_idtoken>, idToken.type = <Configured invalid_idtoken_type>, eventType = Updated)
+    Note right of CS: Note: TxStartPoint contains ParkingBayOccupancy
+
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Invalid or Unknown
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS implementation supports the optional SummaryInventory report
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to retrieve a SummaryInventory report
+    CSMS->>CS: GetBaseReportRequest (requestId, reportBase = SummaryInventory)
+    Note over CSMS: Validation: requestId has integer value >= 0<br>reportBase = SummaryInventory
+
+    CS-->>CSMS: GetBaseReportResponse
+
+    Note over CS,CSMS: Post scenario validation: CSMS receives all NotifyReportRequest messages for this requestId<br>and is able to show the result of the summary inventory to an operator

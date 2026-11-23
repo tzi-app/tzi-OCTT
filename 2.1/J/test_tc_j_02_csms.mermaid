@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted for <Configured evseId>
+
+    loop Every <Configured clock-aligned Meter Values interval>, until <Configured transaction duration> is reached
+        loop For evseId=0 and all configured idle EVSE
+            alt Meter Values reported via MeterValuesRequest
+                CS->>CSMS: MeterValuesRequest (timestamp = <aligned to configured clock-aligned Meter Values interval>, sampledValue.context = Sample.Clock)
+                CSMS-->>CS: MeterValuesResponse
+            else Meter Values reported via NotifyEventRequest
+                CS->>CSMS: NotifyEventRequest (timestamp = <aligned to configured clock-aligned Meter Values interval>, trigger = Periodic, component.name = FiscalMetering)
+                CSMS-->>CS: NotifyEventResponse
+            end
+        end
+        CS->>CSMS: TransactionEventRequest (triggerReason = MeterValueClock, eventType = Updated, timestamp = <aligned to configured clock-aligned Meter Values interval>, sampledValue.context = Sample.Clock)
+        CSMS-->>CS: TransactionEventResponse
+    end
+    Note over CS,CSMS: The Test System ends the testcase after the <Configured transaction duration> is reached

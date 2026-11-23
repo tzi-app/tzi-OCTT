@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: Two valid idTokens with same GroupId are configured
+    Note over CS,CSMS: Reusable State: state is EVConnectedPreSession
+
+    alt Transaction was already started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>, eventType = Updated)
+    else Transaction not yet started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>, eventType = Started)
+    end
+    Note right of CS: idToken has a configured GroupId and<br>is configured in the Local Authorization List
+
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be <Configured groupIdToken>
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = StopAuthorized, idToken.idToken = <Configured valid_idtoken2_idtoken>, idToken.type = <Configured valid_idtoken2_type>, eventType = Updated)
+    Note right of CS: idToken has the same configured GroupId and<br>is configured in the Local Authorization List
+
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be <Configured groupIdToken>
+
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    Note over CS,CSMS: Execute Reusable State EVDisconnected
+
+    Note over CS,CSMS: Post scenario validations: N/a

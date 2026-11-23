@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: Test System has TariffCostCtrlr.Enabled[Cost] is true<br>Test System has TariffCostCtrlr.Enabled[RunningCost] is true
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to configure a tariff with 1 EUR / minute for charging time
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 0, tariff.tariffId = <not omitted>, tariff.currency = EUR, tariff.chargingTime.prices[0].priceMinute = 1.00)
+    Note over CSMS: Validation: evseId must be <evse id><br>tariff.tariffId must be <not omitted><br>tariff.currency must be EUR<br>tariff.chargingTime.prices[0].priceMinute must be 1.00
+    CS-->>CSMS: SetDefaultTariffResponse
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = LimitSet, transactionInfo.transactionLimit.maxCost = 2.00, costDetails.totalCost.currency = EUR, costDetails.totalCost.typeOfCost = NormalCost, costDetails.totalCost.chargingTime.inclTax = 1.00, costDetails.totalCost.total.inclTax = 1.00, costDetails.totalUsage.chargingTime = 60, costDetails.totalUsage.idleTime = <not omitted>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: totalCost must be <omitted><br>transactionLimit must be <omitted>
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = RunningCost, costDetails.totalCost.currency = EUR, costDetails.totalCost.typeOfCost = NormalCost, costDetails.totalCost.chargingTime.inclTax = 1.50, costDetails.totalCost.total.inclTax = 1.50, costDetails.totalUsage.chargingTime = 90, costDetails.totalUsage.idleTime = <not omitted>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: totalCost must be <omitted><br>transactionLimit must be <omitted>
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = CostLimitReached, costDetails.totalCost.currency = EUR, costDetails.totalCost.typeOfCost = NormalCost, costDetails.totalCost.chargingTime.inclTax = 2.00, costDetails.totalCost.total.inclTax = 2.00, costDetails.totalUsage.chargingTime = 120, costDetails.totalUsage.idleTime = <not omitted>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: totalCost must be <omitted><br>transactionLimit must be <omitted>

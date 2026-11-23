@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: A display message is configured.
+
+    CSMS->>CS: GetDisplayMessagesRequest (requestId = Generated Id)
+    Note over CSMS: Validation: Message GetDisplayMessagesRequest<br>- requestId <Generated Id><br>- id <Omitted><br>- priority <Omitted><br>- state <Omitted>
+    CS-->>CSMS: GetDisplayMessagesResponse (status = Accepted)
+    CS->>CSMS: NotifyDisplayMessagesRequest
+    CSMS-->>CS: NotifyDisplayMessagesResponse

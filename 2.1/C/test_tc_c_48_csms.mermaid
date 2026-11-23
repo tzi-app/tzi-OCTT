@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: An idToken with the MastersPass as GroupId is configured
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted for all EVSE
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be <Configured masterPassGroupId>
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, transactionInfo.stoppedReason = MasterPass, idToken.idToken = <Configured masterpass_idtoken_idtoken>, idToken.type = <Configured masterpass_idtoken_type>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be <Configured masterPassGroupId>
+
+    Note over CS,CSMS: Post scenario validations: N/a

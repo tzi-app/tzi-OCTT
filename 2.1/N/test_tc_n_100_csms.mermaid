@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Header lists System under test as Charging Station, but in the scenario<br>the Test System acts as the Charging Station and the CSMS is tested (TC_N_100_CSMS)
+    Note over CS,CSMS: Prerequisite: CSMS supports DataCollectorLog
+    Note over CS,CSMS: Prerequisite: A diagnostics logging server has been set up supporting one of the<br>file transfer protocols supported by the Charging Station<br>(configured at the configuration variable FileTransferProtocols)
+    Note over CS,CSMS: Prerequisite: Charging Station supports DataCollector<br>(Component DataCollector available)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to retrieve the DataCollectorLog
+
+    CSMS->>CS: GetLogRequest
+    Note over CSMS: Validation: logType must be DataCollectorLog
+    CS-->>CSMS: GetLogResponse
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploading, requestId = GetLogRequest.requestId of step 1)
+    CSMS-->>CS: LogStatusNotificationResponse
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploaded, requestId = GetLogRequest.requestId of step 1)
+    CSMS-->>CS: LogStatusNotificationResponse

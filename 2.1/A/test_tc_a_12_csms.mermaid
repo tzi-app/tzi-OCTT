@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports ISO 15118
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CSMS->>CS: TriggerMessageRequest
+    Note over CSMS: Validation: requestedMessage must be SignV2GCertificate
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    CS->>CSMS: SignCertificateRequest (csr = Generated CSR, certificateType = V2GCertificate)
+    Note right of CS: CSR generated based on:<br>- Configured Country<br>- Configured Organization<br>- Configured OrganizationalUnit
+    CSMS-->>CS: SignCertificateResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    CSMS->>CS: CertificateSignedRequest
+    Note over CSMS: Validation: certificateChain must be the certificate generated from the CSR received in step 3<br>and signed by the V2G Root or SubCA certificate from the configured V2G certificate chain
+    Note over CSMS: Certificate checks (testcase will NOT FAIL if these fail,<br>because generating the certificate is probably not done by the CSMS):<br>- The key must be at least 224 bits long<br>- The certificate must be in X.509 format encoded in PEM format
+    CS-->>CSMS: CertificateSignedResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

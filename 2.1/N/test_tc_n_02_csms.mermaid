@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Memory State: CSMS requests ClearVariableMonitoring ItemsPerMessage from CS
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for<br>the variable Power of ChargingStation
+
+    CSMS->>CS: GetMonitoringReportRequest (component = ChargingStation, variable = Power)
+    Note over CSMS: Validation: componentVariable[0].component.name = "ChargingStation"<br>componentVariable[0].component.instance is omitted<br>componentVariable[0].variable.name = "Power"<br>componentVariable[0].variable.instance is omitted<br>monitoringCriteria is omitted
+    CS-->>CSMS: GetMonitoringReportResponse (status = EmptyResultSet)
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for<br>the variable AvailabilityState of EVSE #1
+
+    CSMS->>CS: GetMonitoringReportRequest (component = EVSE, evse.id = 1, variable = AvailabilityState)
+    Note over CSMS: Validation: componentVariable[1].component.name = "EVSE"<br>componentVariable[1].component.instance is omitted<br>componentVariable[1].component.evse.id = 1<br>componentVariable[1].variable.name = "AvailabilityState"<br>componentVariable[1].variable.instance is omitted<br>monitoringCriteria is omitted
+    CS-->>CSMS: GetMonitoringReportResponse (status = Accepted)
+
+    loop Repeated as often as needed to report all configuration variables
+        CS->>CSMS: NotifyMonitoringReportRequest
+        CSMS-->>CS: NotifyMonitoringReportResponse
+    end
+
+    Note over CS,CSMS: Post scenario validation: Check that CSMS shows the monitor<br>for AvailabilityState for EVSE #1

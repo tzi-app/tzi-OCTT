@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports HTTP file transfer protocol
+    Note over CS,CSMS: Prerequisite: A diagnostics logging server has been set up for HTTP<br>and accepts specific userinfo credentials
+    Note over CS,CSMS: Configuration: CSMS configured to prevent unauthorised uploading to HTTP log location
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to GetLogRequest with logType DiagnosticsLog<br>and remoteLocation with userinfo for HTTP Basic Authentication
+
+    CSMS->>CS: GetLogRequest (logType = DiagnosticsLog, log.remoteLocation, requestId)
+    Note over CSMS: Validation: logType must be DiagnosticsLog<br>log.remoteLocation must contain a valid URL,<br>specify scheme HTTP,<br>contain userinfo for HTTP Basic Authentication,<br>not contain a URL fragment component,<br>not contain a URL query components that ends in a slash character ("/")
+    CS-->>CSMS: GetLogResponse (status = Accepted)
+
+    CS->>CSMS: HTTP POST log file to GetLogRequest.log.remoteLocation of step 1
+    CSMS-->>CS: HTTP response (401 Unauthorized)
+    Note over CSMS: Validation: HTTP status code must be 401 Unauthorized
+
+    CS->>CSMS: HTTP POST file to GetLogRequest.log.remoteLocation of step 1
+    CSMS-->>CS: HTTP response (2xx)
+    Note over CSMS: Validation: HTTP status code must be in 2xx-range
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploading, requestId = GetLogRequest.requestId of step 1)
+    CSMS-->>CS: LogStatusNotificationResponse
+
+    CS->>CSMS: LogStatusNotificationRequest (status = Uploaded, requestId = GetLogRequest.requestId of step 1)
+    CSMS-->>CS: LogStatusNotificationResponse

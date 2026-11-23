@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+
+    opt State is NOT Authorized
+        Note over CS,CSMS: Execute Reusable State Authorized
+    end
+
+    alt EVConnected is NOT true (Part 1)
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Occupied)
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Occupied, component.name = Connector, variable.name = AvailabilityState)
+        CSMS-->>CS: StatusNotificationResponse
+        CSMS-->>CS: NotifyEventResponse
+        CS->>CSMS: TransactionEventRequest (triggerReason = CablePluggedIn, transactionInfo.chargingState = EVConnected, evse.id = <Configured evseId>, evse.connectorId = <Configured connectorId>, eventType = Updated)
+        CSMS-->>CS: TransactionEventResponse
+    else EVConnected is true
+        Note over CS,CSMS: Skip Part 1, proceed directly to Part 2
+    end
+
+    Note over CS,CSMS: Part 2
+    CS->>CSMS: TransactionEventRequest (triggerReason = ChargingStateChanged, transactionInfo.chargingState = Charging, eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post condition: State is EnergyTransferStarted<br>EVConnected is true

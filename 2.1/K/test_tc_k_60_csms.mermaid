@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfilePurpose = TxProfile, evseId = <Configured evseId>, transactionId = <Generated transactionId>)
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose is TxProfile AND<br>chargingProfile.evseId is <Configured evseId> AND<br>chargingProfile.transactionId is <Generated transactionId> AND<br>chargingProfile.chargingProfileKind is Relative OR Absolute<br>If chargingProfileKind is Relative then chargingSchedule.startSchedule must be omitted<br>If chargingProfileKind is Absolute then chargingSchedule.startSchedule must NOT be omitted<br>The received Charging Profile must comply with the requirements defined at part 2 specification
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

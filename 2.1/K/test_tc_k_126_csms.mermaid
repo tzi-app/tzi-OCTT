@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Prerequisite: The CSMS is able to turn off providing a Charging Profile during negotiation
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: ISO15118-20 transaction just started<br>exposing allowedEnergyTransferModes and transactionId
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = Configured evseId,<br>chargingNeeds.requestedEnergyTransfer = one of allowedEnergyTransferModes or if omitted AC_three_phase,<br>chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_two_phase, AC_three_phase, AC_BPT, AC_BPT_DER, AC_DER],<br>chargingNeeds.controlMode = DynamicControl,<br>chargingNeeds.v2xChargingParameters.maxChargePower = 8000W,<br>chargingNeeds.v2xChargingParameters.maxDischargePower = 0W)
+    CSMS-->>CS: NotifyEVChargingNeedsResponse (status = NoChargingProfile)
+    Note over CSMS: Validation: status must be NoChargingProfile
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The Test System reports support for<br>component.name CustomizationCtrlr<br>variable.name CustomTriggers<br>variableAttribute.value [Custom1, Custom2, Custom3]
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Use CSMS to trigger custom trigger Custom2 for <Configured evseId>
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = CustomTrigger, customTrigger = Custom2, evse.id = <Configured evseId>)
+    Note over CSMS: Validation: Message TriggerMessageRequest<br>- requestedMessage CustomTrigger<br>- customTrigger Custom2<br>- evse.id <Configured evseId>
+
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

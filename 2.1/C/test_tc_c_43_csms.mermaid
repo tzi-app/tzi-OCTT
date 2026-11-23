@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: Two known valid idTokens with same GroupId are configured
+    Note over CS,CSMS: Reusable State: EVConnectedPreSession
+
+    alt Transaction was already started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>, eventType = Updated)
+    else Transaction not yet started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>, eventType = Started)
+    end
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation (listed under Step 1): TransactionEventResponse<br>idTokenInfo.status Accepted<br>idTokenInfo.groupIdToken.idToken <Configured groupIdToken>
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured valid_idtoken2_idtoken>, idToken.type = <Configured valid_idtoken2_type>)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation (Step 5): AuthorizeResponse<br>idTokenInfo.status Accepted<br>idTokenInfo.groupIdToken.idToken <Configured groupIdToken>
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = StopAuthorized, idToken.idToken = <Configured valid_idtoken2_idtoken>, idToken.type = <Configured valid_idtoken2_type>, eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation (Step 7): TransactionEventResponse<br>idTokenInfo.status Accepted<br>idTokenInfo.groupIdToken.idToken <Configured groupIdToken>
+
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    Note over CS,CSMS: Execute Reusable State EVDisconnected
+
+    Note over CS,CSMS: Post scenario validations: N/a

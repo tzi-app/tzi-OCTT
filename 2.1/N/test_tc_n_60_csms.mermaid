@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Memory State: CSMS requests ClearVariableMonitoring ItemsPerMessage from CS
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for:<br>- all ThresholdMonitoring<br>- and the variable Power of both ChargingStation and EVSE #1
+
+    CSMS->>CS: GetMonitoringReportRequest
+    Note over CSMS: Validation (Step 1, as stated in header):<br>monitoringCriteria is DeltaMonitoring<br>componentVariable[0].component.name = "ChargingStation"<br>componentVariable[0].variable.name = "AvailabilityState"<br>componentVariable[1].component.name = "EVSE"<br>componentVariable[1].component.evse.id = configured evseId<br>componentVariable[1].variable.name = "AvailabilityState"
+    Note over CS,CSMS: Remark: the header's Step 1 validation (DeltaMonitoring, AvailabilityState)<br>does not match the preceding manual action (ThresholdMonitoring, Power)
+    CS-->>CSMS: GetMonitoringReportResponse (status = EmptyResultSet)
+
+    Note over CS,CSMS: Manual Action: Manually instruct CSMS to get a report of monitors for:<br>- all DeltaMonitoring<br>- and the variable AvailabilityState of both ChargingStation and EVSE #1
+
+    CSMS->>CS: GetMonitoringReportRequest
+    Note over CSMS: Validation (Step 3, as stated in header):<br>monitoringCriteria = ThresholdMonitoring<br>componentVariable[0].component.name = "ChargingStation"<br>componentVariable[0].variable.name = "AvailabilityState"<br>componentVariable[1].component.name = "EVSE"<br>componentVariable[1].component.evse.id = configured evseId<br>componentVariable[1].variable.name = "AvailabilityState"
+    Note over CS,CSMS: Remark: the header's Step 3 validation (ThresholdMonitoring)<br>does not match the preceding manual action (DeltaMonitoring)
+    CS-->>CSMS: GetMonitoringReportResponse (status = Accepted)
+
+    loop Repeated as often as needed to report all configuration variables
+        CS->>CSMS: NotifyMonitoringReportRequest
+        CSMS-->>CS: NotifyMonitoringReportResponse
+    end
+
+    Note over CS,CSMS: Post scenario validation: Check that CSMS shows the Delta monitors<br>for AvailabilityState for both ChargingStation and EVSE #1

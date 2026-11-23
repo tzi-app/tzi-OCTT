@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: If the CSMS supports sending a TxProfile while there is no transaction ongoing
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfile.id = <Configured chargingProfileId>)
+    Note over CSMS: Validation: SetChargingProfileRequest<br>- evseId <Configured evseId> AND<br>- chargingProfile.chargingProfilePurpose TxProfile AND<br>- chargingProfile.stackLevel <Configured stackLevel> AND<br>- chargingProfile.chargingProfileKind Relative AND<br>- chargingProfile.chargingSchedule.startSchedule must be omitted AND<br>- chargingProfile.chargingSchedule.chargingRateUnit <Configured chargingRateUnit> AND<br>- chargingProfile.chargingSchedule.chargingSchedulePeriod.startPeriod 0 AND<br>- chargingProfile.chargingSchedule.chargingSchedulePeriod.limit 7.0 or 7000.0 AND<br>- chargingProfile.chargingSchedule.chargingSchedulePeriod.numberPhases <Configured numberPhases> where <Configured numberPhases> not 3 OR<br>- chargingProfile.chargingSchedule.chargingSchedulePeriod.numberPhases <Configured numberPhases> or <omit> where <Configured numberPhases> 3
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Rejected)
+
+    Note over CS,CSMS: Post scenario validations: N/a

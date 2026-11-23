@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status Accepted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = <Configured valid_idtoken_idtoken>, idToken.type = <Configured valid_idtoken_type>, eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status Accepted<br>totalCost <Optional>
+
+    Note over CS,CSMS: Execute Reusable State EVConnectedPreSession
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    loop Every <Configured sampled Meter Values interval>, the Test System ends the testcase after two MeterValues
+        CS->>CSMS: TransactionEventRequest (triggerReason = MeterValuePeriodic, eventType = Updated, sampledValue.context = Sample.Periodic)
+        Note right of CS: timestamp: the intervals between the timestamps of the Meter Value messages<br>equal the configured sampled Meter Values interval
+        CSMS-->>CS: TransactionEventResponse
+        opt TransactionEventResponse did not contain a totalCost
+            CSMS->>CS: CostUpdatedRequest
+            Note over CSMS: Validation: (Optional) CostUpdatedRequest<br>transactionId <Generated TransactionId>
+            CS-->>CSMS: CostUpdatedResponse
+        end
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

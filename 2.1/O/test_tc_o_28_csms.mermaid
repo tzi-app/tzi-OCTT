@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: Execute Reusable State EnergyTransferStarted
+
+    CSMS->>CS: SetDisplayMessageRequest (message.endDateTime = <Configured endDateTime>, message.transactionId = <Generated transactionId from Before>)
+    Note over CSMS: Validation: SetDisplayMessageRequest<br>- message.state is omitted<br>- message.startDateTime is omitted<br>- message.endDateTime is <Configured endDateTime><br>- message.transactionId is <Generated transactionId from Before>
+
+    CS-->>CSMS: SetDisplayMessageResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

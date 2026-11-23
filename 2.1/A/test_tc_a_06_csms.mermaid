@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 2 and/or 3
+
+    CS->>CSMS: Terminate connection, then initiate TLS handshake with TLS version lower than 1.2 - Client Hello
+    CSMS->>CS: Terminate connection (TLS version lower than 1.2 noticed)
+
+    CS->>CSMS: Initiate TLS handshake with TLS version 1.2 or higher - Client Hello
+    CSMS-->>CS: Server Hello (with Configured server certificate)
+
+    opt CSMS uses security profile 3
+        CS->>CSMS: Send client certificate
+    end
+    CS->>CSMS: Client Key Exchange, Certificate verify, Change Cipher Spec, Finished
+    CSMS-->>CS: Change Cipher Spec, Finished
+
+    CS->>CSMS: HTTP upgrade request
+    Note right of CS: The HTTP request only contains a username/password combination<br>when the CSMS uses security profile 2
+    CSMS-->>CS: Upgrade the connection to a (secured) WebSocket connection
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse status must be Accepted
+
+    loop For all connectors
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+        CSMS-->>CS: StatusNotificationResponse
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end

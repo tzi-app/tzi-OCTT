@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO 15118-20
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: Authorized
+    Note over CS,CSMS: Execute Reusable State: EVConnectedPreSession
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = <Configured evseId>, maxScheduleTuples = 3, chargingNeeds.requestedEnergyTransfer = AC_BPT, chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_three_phase, AC_BPT], chargingNeeds.controlMode = DynamicControl, chargingNeeds.v2xChargingParameters.maxChargePower = 5000, chargingNeeds.v2xChargingParameters.maxDischargePower = 5000)
+    CSMS-->>CS: NotifyEVChargingNeedsResponse
+    Note over CSMS: Validation: status must be Accepted or Processing
+
+    Note over CS,CSMS: If NotifyEVChargingNeedsResponse status was Processing,<br>the Test System will wait 60 seconds for the request
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfilePurpose must be TxProfile<br>transactionId must be <Provided transactionId from before><br>chargingProfile.chargingSchedule[*].chargingSchedulePeriods must be size <= 3<br>chargingProfile.chargingSchedule[*].absolutePriceSchedule.priceRuleStacks must be size <= 3<br>chargingProfile.chargingSchedule[*].priceLevelSchedule.priceLevelScheduleEntries must be size <= 3
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingScheduleRequest (evseId = <Configured evseId>, chargingSchedule = <ChargingSchedule provided at step 3>)
+    CSMS-->>CS: NotifyEVChargingScheduleResponse
+    Note over CSMS: Validation: status must be Accepted

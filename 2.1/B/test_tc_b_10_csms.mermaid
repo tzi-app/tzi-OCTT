@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request CSMS to set data for:<br>- OCPPCommCtrlr.OfflineThreshold<br>- AuthCtrlr.AuthorizeRemoteStart
+    CSMS->>CS: SetVariablesRequest (setVariableData: OCPPCommCtrlr.OfflineThreshold = "123", AuthCtrlr.AuthorizeRemoteStart = "false")
+    Note over CSMS: Validation: SetVariablesRequest with (in arbitrary order):<br>setVariableData[1]:<br>- variable.name = "OfflineThreshold"<br>- component.name = "OCPPCommCtrlr"<br>- attributeValue = "123"<br>- attributeType is absent or attributeType = Actual<br>setVariableData[2]:<br>- variable.name = "AuthorizeRemoteStart"<br>- component.name = "AuthCtrlr"<br>- attributeValue = "false"<br>- attributeType is absent or attributeType = Actual
+
+    CS-->>CSMS: SetVariablesResponse
+
+    Note over CS,CSMS: Post scenario validation: Manually validate that CSMS has correctly set the requested variables

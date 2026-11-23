@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: UpdateFirmwareRequest
+    CS-->>CSMS: UpdateFirmwareResponse (status = Accepted)
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloading)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloaded)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = SignatureVerified)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Installing)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = InstallRebooting)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: BootNotificationRequest (reason = FirmwareUpdate)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse<br>status must be Accepted
+
+    Note over CS,CSMS: Test System notifies the CSMS about the current state of all connectors
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Available, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: Responds accordingly (StatusNotificationResponse / NotifyEventResponse)
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = InstallationFailed)
+    CSMS-->>CS: FirmwareStatusNotificationResponse

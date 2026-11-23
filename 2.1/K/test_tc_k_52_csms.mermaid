@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: GetChargingProfilesRequest
+    CS-->>CSMS: GetChargingProfilesResponse (status = Accepted)
+    CS->>CSMS: ReportChargingProfilesRequest (requestId = Generated Id, chargingProfile.chargingProfilePurpose = ChargingStationExternalConstraints)
+    CSMS-->>CS: ReportChargingProfilesResponse

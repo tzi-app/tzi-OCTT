@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    CS->>CSMS: ClearedChargingLimitRequest (chargingLimitSource = EMS)
+    CSMS-->>CS: ClearedChargingLimitResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = ChargingRateChanged)
+    CSMS-->>CS: TransactionEventResponse

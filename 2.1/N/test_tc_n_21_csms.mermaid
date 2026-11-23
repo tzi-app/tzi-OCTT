@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CS->>CSMS: NotifyEventRequest (eventNotificationType = HardWiredMonitor)
+    CSMS-->>CS: NotifyEventResponse
+    Note over CSMS: Validation: NotifyEventResponse with empty body
+
+    Note over CS,CSMS: Post scenario validations: N/A

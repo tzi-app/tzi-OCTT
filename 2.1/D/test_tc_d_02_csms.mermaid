@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a Local Authorization list to the Charging Station<br>with type Differential and some idTokens in the message
+
+    CSMS->>CS: GetLocalListVersionRequest
+    CS-->>CSMS: GetLocalListVersionResponse (versionNumber = 1)
+    CSMS->>CS: SendLocalListRequest
+    Note over CSMS: Validation (listed under Step 1 in the header): Message SendLocalListRequest<br>- updateType Differential<br>- versionNumber bigger than currently configured in Test System<br>- localAuthorizationList not empty
+    CS-->>CSMS: SendLocalListResponse (status = Accepted)
+
+    Note over CS,CSMS: Note: If the Local Authorization List is too big for one message, step 1 and 2 will be repeated

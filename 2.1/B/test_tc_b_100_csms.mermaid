@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS uses the SetNetworkProfileRequest to update a network connection profile
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Note: Request CSMS to send a network profile including identity and password
+
+    CSMS->>CS: SetNetworkProfileRequest (configurationSlot, connectionData incl. identity and basicAuthPassword)
+    Note over CSMS: Validation: configurationSlot is <Configured configurationSlot><br>connectionData.messageTimeout <Configured messageTimeout><br>connectionData.ocppCsmsUrl <Configured ocppCsmsUrl><br>connectionData.ocppInterface <Configured ocppInterface><br>connectionData.ocppTransport JSON<br>connectionData.ocppVersion OCPP20<br>connectionData.securityProfile <Configured securityProfile><br>connectionData.identity <Configured identity><br>connectionData.basicAuthPassword <Configured basicAuthPassword>
+
+    CS-->>CSMS: SetNetworkProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

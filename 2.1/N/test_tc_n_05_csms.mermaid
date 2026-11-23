@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to set a monitoring base of All
+
+    CSMS->>CS: SetMonitoringBaseRequest (monitoringBase = All)
+    Note over CSMS: Validation (Step 1): SetMonitoringBaseRequest<br>monitoringBase = All
+    CS-->>CSMS: SetMonitoringBaseResponse
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to set a monitoring base of FactoryDefault
+
+    CS->>CSMS: SetMonitoringBaseRequest (monitoringBase = FactoryDefault)
+    Note over CSMS: Validation (Step 3): SetMonitoringBaseRequest<br>monitoringBase = FactoryDefault
+    CS-->>CSMS: SetMonitoringBaseResponse
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to set a monitoring base of HardWiredOnly
+
+    CS->>CSMS: SetMonitoringBaseRequest (monitoringBase = HardWiredOnly)
+    CS-->>CSMS: SetMonitoringBaseResponse
+    Note over CSMS: Validation (Step 6): SetMonitoringBaseRequest<br>monitoringBase = HardWiredOnly

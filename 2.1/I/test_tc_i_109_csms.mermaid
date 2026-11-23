@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports local cost calculation by CS<br>CS has TariffCtrlr.Enabled[Tariff] = true<br>CS has TariffCtrlr.MaxElements[Tariff] > 0
+    Note over CS,CSMS: Configuration: CSMS is configured to provide a driver specific tariff<br>for <Configured valid_idtoken_idtoken> that specifies:<br>- currency: <not omitted><br>- energy price: 0.25 per kWh (ex VAT), vat 20%<br>- idle price: 0.10 per minute (ex VAT), vat 20%<br>- fixed fee: 0.50 (ex VAT), vat 20%
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured valid_idtoken_idtoken>)
+    CSMS-->>CS: AuthorizeResponse (idTokenInfo.status = Accepted, tariff)
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>tariff.tariffId must be <not omitted><br>tariff.currency must be <not omitted><br>tariff.energy.prices[0].priceKwh must be 0.25<br>tariff.energy.taxRates[0].tax must be 20<br>tariff.energy.taxRates[0].type must be VAT<br>tariff.idleTime.prices[0].priceMinute must be 0.10<br>tariff.idleTime.taxRates[0].tax must be 20<br>tariff.idleTime.taxRates[0].type must be VAT<br>tariff.fixedFee.prices[0].priceFixed must be 0.50<br>tariff.fixedFee.taxRates[0].tax must be 20<br>tariff.fixedFee.taxRates[0].type must be VAT

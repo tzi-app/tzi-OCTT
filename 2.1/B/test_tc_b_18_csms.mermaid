@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): none
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to get the value of<br>EVSE #1::AvailabiltyState from all Problem components
+    CSMS->>CS: GetReportRequest (componentCriteria = Problem, componentVariable[0] = EVSE #1 / AvailabilityState)
+    Note over CSMS: Validation: componentCriteria = Problem<br>componentVariable[0].component.name = "EVSE"<br>componentVariable[0].component.evse.id = 1<br>componentVariable[0].variable.name = "AvailabilityState"
+    CS-->>CSMS: GetReportResponse (status = EmptyResultSet)
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to get the value of<br>EVSE #1::AvailabiltyState from all Available components
+    CSMS->>CS: GetReportRequest (componentCriteria = Available, componentVariable[0] = EVSE #1 / AvailabilityState)
+    Note over CSMS: Validation: componentCriteria is Available<br>componentVariable[0].component.name = "EVSE"<br>componentVariable[0].component.evse.id = 1<br>componentVariable[0].variable.name = "AvailabilityState"
+    CS-->>CSMS: GetReportResponse (status = Accepted)
+
+    CS->>CSMS: NotifyReportRequest
+    CSMS-->>CS: NotifyReportResponse
+
+    Note over CS,CSMS: Post scenario validations: N/A

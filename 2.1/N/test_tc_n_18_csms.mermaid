@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Configuration: The test requests the value of ItemsPerMessageClearVariableMonitoring<br>and then instructs the CSMS to clear (at least) one more monitor than allowed by this value.<br>The value is read-only, so it cannot be manipulated in the test.<br>If the Charging Station supports more monitor ids in the list than can be set by the CSMS,<br>this cannot be tested.
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to send GetVariablesRequest
+    CSMS->>CS: GetVariablesRequest (Component.name = MonitoringCtrlr, Variable.name = ItemsPerMessage, Variable.instance = ClearVariableMonitoring)
+    CS-->>CSMS: GetVariablesResponse
+
+    Note over CS,CSMS: Manual Action: Instruct CSMS to clear more monitors than allowed in ItemsPerMessage<br>(these monitor ids do not have to exist)
+    loop Two or more requests, each within the ItemsPerMessageClearVariableMonitoring limit
+        CSMS->>CS: ClearVariableMonitoringRequest (list of ids)
+        CS-->>CSMS: ClearVariableMonitoringResponse
+    end
+    Note over CSMS: Validation (listed in the header under Step 1): Two or more ClearVariableMonitoringRequest,<br>so that the maximum number of ItemsPerMessageClearVariableMonitoring ids is never exceeded.<br>Test System replies with a ClearVariableMonitoringResponse for each request,<br>the content of the responses is irrelevant for the test.

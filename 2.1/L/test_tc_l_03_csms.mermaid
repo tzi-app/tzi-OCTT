@@ -1,0 +1,47 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS configuration firmware retrieveDateTime needs to be set to a future dateTime
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    CSMS->>CS: UpdateFirmwareRequest
+    Note over CSMS: Validation: firmware.retrieveDateTime must be a dateTime in the future
+    CS-->>CSMS: UpdateFirmwareResponse (status = Accepted)
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = DownloadScheduled)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    Note over CS,CSMS: Next step is executed after the retrieveDateTime from step 1 has been reached
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloading)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloaded)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = SignatureVerified)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Installing)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = InstallRebooting)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: BootNotificationRequest (reason = FirmwareUpdate)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    loop For each connector
+        alt StatusNotification
+            CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+            CSMS-->>CS: StatusNotificationResponse
+        else NotifyEvent
+            CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+            CSMS-->>CS: NotifyEventResponse
+        end
+    end
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Installed)
+    CSMS-->>CS: FirmwareStatusNotificationResponse

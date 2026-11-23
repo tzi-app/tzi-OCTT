@@ -1,0 +1,37 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot the Charging Station with status ImmediateAndResume
+
+    CSMS->>CS: ResetRequest (status ImmediateAndResume)
+    Note over CSMS: Validation: ResetRequest<br>type must be ImmediateAndResume
+    CS-->>CSMS: ResetResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = ResetCommand, idToken omitted)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: BootNotificationRequest (reason = RemoteReset)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse<br>status must be Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    CS->>CSMS: NotifyEventRequest for Configured connectorId (trigger = Delta, actualValue = "Occupied", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: NotifyEventResponse
+    loop For each other connector
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    CS->>CSMS: SecurityEventNotificationRequest (type = ResetOrReboot)
+    CSMS-->>CS: SecurityEventNotificationResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = TxResumed, transactionInfo.chargingState = Charging, idToken omitted)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

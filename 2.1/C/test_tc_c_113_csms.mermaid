@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Charging Stations with integrated payment terminals
+    Note over CS,CSMS: Prerequisite: Test System has<br>PaymentCtrlr.AuthorizeDirectPayment = false<br>PaymentCtrlr.AuthorizationAmount = 50.00<br>PaymentCtrlr.PaymentDetails = "CardLast4Digits"<br>PaymentCtrlr.SettlementByCSMS = false
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Starts and immediately ends a transaction
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = Authorized, idToken = <pspRef>, idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>, transactionInfo.transactionLimit.maxCost = 50.00)
+    Note right of CS: idToken.additionalInfo[0].additionalIdToken = 1234<br>idToken.additionalInfo[0].type = Last4Digits
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = StopAuthorized, idToken = <pspRef>, idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>, transactionInfo.stoppedReason = Local)
+    Note right of CS: idToken.additionalInfo[0].additionalIdToken = 1234<br>idToken.additionalInfo[0].type = Last4Digits<br>costDetails.totalCost.currency = EUR<br>costDetails.totalCost.typeOfCost = NormalCost<br>costDetails.totalCost.total = 0<br>costDetails.totalUsage.energy = 0<br>costDetails.totalUsage.chargingTime = 0<br>costDetails.totalUsage.idleTime = 0
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: NotifySettlementRequest (transactionId = <transactionId>, pspRef = <pspRef>, status = Canceled, settlementTime = <Equal to timestamp step 3>, settlementAmount = 0, receiptUrl omitted)
+    CSMS-->>CS: NotifySettlementResponse
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

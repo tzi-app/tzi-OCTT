@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: Booted<br>Simulates a complete power cycle of the Charging Station,<br>ending booted back up and in idle mode
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse - status Accepted
+
+    loop For all connectors
+        Note over CS,CSMS: Step 3: Test System notifies the CSMS about the current state of the connector
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: CSMS responds accordingly
+    end
+
+    Note over CS,CSMS: Post condition: State is Booted

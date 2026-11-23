@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = Configured valid_idtoken_idtoken, idToken.type = Configured valid_idtoken_type)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: Notify status change of connector: StatusNotificationRequest (connectorStatus = Occupied) / NotifyEventRequest (trigger = Delta, actualValue = Occupied, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: CSMS responds accordingly
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = SignedDataReceived, idToken.idToken = Configured valid_idtoken_idtoken, idToken.type = Configured valid_idtoken_type, evse.id = Configured evseId, evse.connectorId = Configured connectorId)
+    Note right of CS: meterValue provided with:<br>sampledValue.value = 0.0<br>sampledValue.context = Transaction.Begin<br>sampledValue.signedMeterValue = Generated SignedMeterValueType
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = ChargingStateChanged, transactionInfo.chargingState = Charging)
+    CSMS-->>CS: TransactionEventResponse

@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports local cost calculation by CS
+    Note over CS,CSMS: Prerequisite: CS has TariffCtrlr.Enabled[Tariff] = true
+    Note over CS,CSMS: Prerequisite: CS has TariffCtrlr.MaxElements[Tariff] > 0
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a default tariff on EVSE 0.
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 0, tariff.tariffId)
+    Note over CSMS: Validation: evseId 0<br>tariff.tariffId must be <not omitted>
+    CS-->>CSMS: SetDefaultTariffResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to clear only the tariff set in step 1.
+
+    CSMS->>CS: ClearTariffsRequest (tariffIds[0] = tariffId of step 1)
+    Note over CSMS: Validation: tariffIds[0] must be<br><SetDefaultTariffRequest.tariff.tariffId of step 1>
+    CS-->>CSMS: ClearTariffsResponse (clearTariffsResult[0].tariffId = tariffId of step 1, clearTariffsResult[0].status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to clear all tariffs.
+
+    CSMS->>CS: ClearTariffsRequest (tariffIds omitted)
+    Note over CSMS: Validation: tariffIds must be <omitted>
+    CS-->>CSMS: ClearTariffsResponse (clearTariffsResult[0].tariffId omitted, clearTariffsResult[0].status = NoTariff)
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS is configured to first respond to a<br>BootNotificationRequest with status Pending or Rejected
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp,<br>chargingStation.model = <Configured model>,<br>chargingStation.vendorName = <Configured vendorName>)
+    CSMS-->>CS: BootNotificationResponse (status = Pending OR Rejected)
+    Note over CSMS: Validation: status must be Pending OR Rejected
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = BootNotification)
+    Note over CSMS: Validation: requestedMessage must be BootNotification
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    CS->>CSMS: BootNotificationRequest (reason = Triggered,<br>chargingStation.model = <Configured model>,<br>chargingStation.vendorName = <Configured vendorName>)
+    CSMS-->>CS: BootNotificationResponse (status = Accepted)
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    alt StatusNotificationRequest
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+        CSMS-->>CS: StatusNotificationResponse
+    else NotifyEventRequest
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available",<br>component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

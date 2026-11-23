@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    CSMS->>CS: ClearChargingProfileRequest (chargingProfilePurpose = TxDefaultProfile, evseId = <Configured evseId>, stackLevel = <Configured stackLevel>)
+    Note over CSMS: Validation: Message ClearChargingProfileRequest<br>chargingProfileCriteria.chargingProfilePurpose must be TxDefaultProfile<br>chargingProfileCriteria.stackLevel must be <Configured stackLevel><br>chargingProfileCriteria.evseId must be <Configured evseId><br>chargingProfileId must be omitted
+
+    CS-->>CSMS: ClearChargingProfileResponse (status = Unknown)
+
+    Note over CS,CSMS: Post scenario validations: N/a

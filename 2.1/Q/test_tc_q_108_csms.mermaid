@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: ISO15118-20 transaction started in V2X AC_BPT energy transfer mode<br>exposing allowedEnergyTransferModes and transactionId
+
+    CSMS->>CS: SetChargingProfileRequest (evseId = Configured evseId, transactionId, chargingProfilePurpose = TxProfile, operationMode = CentralSetpoint, setpoint = 10.000)
+    Note over CSMS: Validation: evseId must be Configured evseId<br>chargingProfile.transactionId must be transactionId<br>chargingProfile.chargingProfilePurpose must be TxProfile<br>chargingSchedule.chargingRateUnit must be W<br>chargingSchedulePeriod[0].startPeriod must be 0<br>chargingSchedulePeriod[0].operationMode must be CentralSetpoint<br>chargingSchedulePeriod[0].setpoint must be 10.000<br>chargingSchedulePeriod[0].numberPhases may be present<br>chargingSchedulePeriod[0].phaseToUse may be present<br>all other fields in chargingSchedulePeriod[0] must be absent
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

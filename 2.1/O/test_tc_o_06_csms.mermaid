@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a display message for a specific transaction.
+
+    CSMS->>CS: SetDisplayMessageRequest (message.transactionId, message.priority)
+    Note over CSMS: Validation: message.transactionId is the same ID as previously returned by the Charging Station AND<br>message.priority = <Configured Priority>
+
+    CS-->>CSMS: SetDisplayMessageResponse (status = Accepted)
+
+    Note over CS,CSMS: Execute Reusable State EVDisconnected
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+
+    opt State is NOT EnergyTransferStarted
+        Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+    end
+
+    Note over CS,CSMS: The tool will wait for <Configured Transaction Duration> seconds
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = StopAuthorized, eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    Note over CS,CSMS: Post condition: State is StopAuthorized

@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CS has implemented device model monitoring<br>and MonitoringCtrlr.Enabled = true
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to get a report of monitors for DeltaMonitoring
+
+    CSMS->>CS: GetMonitoringReportRequest
+    Note over CSMS: Validation: monitoringCriteria = DeltaMonitoring
+
+    CS-->>CSMS: GetMonitoringReportResponse (status = Accepted)
+
+    CS->>CSMS: NotifyMonitoringReportRequest (requestId = <requestId from step 1>, tbc = false, seqNo = 0)
+    Note right of CS: monitor[0].component.name = EVSE<br>monitor[0].component.evse.id = 1<br>monitor[0].variable.name = Power<br>monitor[0].variableMonitoring[0].type = TargetDeltaRelative<br>monitor[0].variableMonitoring[0].transaction = false<br>monitor[0].variableMonitoring[0].value = 5<br>monitor[0].variableMonitoring[0].eventNotificationType = <not omitted><br>monitor[0].variableMonitoring[1].type = TargetDelta<br>monitor[0].variableMonitoring[1].transaction = false<br>monitor[0].variableMonitoring[1].value = 5<br>monitor[0].variableMonitoring[1].eventNotificationType = <not omitted>
+
+    CSMS-->>CS: NotifyMonitoringReportResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

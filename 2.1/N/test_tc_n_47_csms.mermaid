@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: GetMonitoringReportRequest
+    Note over CSMS: Validation: monitoringCriteria omitted AND<br>componentVariable omitted
+    CS-->>CSMS: GetMonitoringReportResponse
+
+    loop Repeated if tbc is True at Step 3
+        CS->>CSMS: NotifyMonitoringReportRequest
+        CSMS-->>CS: NotifyMonitoringReportResponse
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

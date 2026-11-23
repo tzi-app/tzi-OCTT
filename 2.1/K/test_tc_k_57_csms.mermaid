@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State(s): State is Authorized AND<br>EVConnectedPreSession AND<br>ISO15118SmartCharging
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = Configured evseId, maxScheduleTuples and chargingNeeds = Configured values from mock EV)
+    CSMS-->>CS: NotifyEVChargingNeedsResponse (status = Accepted or Processing)
+    Note over CSMS: Validation: status must be Accepted or Processing
+
+    Note over CS,CSMS: If NotifyEVChargingNeedsResponse status was Processing,<br>the Test System will wait 60 seconds for the request
+    CSMS->>CS: SetChargingProfileRequest (evseId, chargingProfilePurpose = TxProfile, transactionId)
+    Note over CSMS: Validation: evseId = Configured evseId<br>chargingProfilePurpose = TxProfile<br>transactionId = Provided transactionId from before
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: NotifyEVChargingScheduleRequest (evseId = Configured evseId, chargingSchedule = ChargingSchedule provided at step 3)
+    CSMS-->>CS: NotifyEVChargingScheduleResponse (status = Accepted)
+    Note over CSMS: Validation: status must be Accepted

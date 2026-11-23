@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Bidirectional Power Transfer
+    Note over CS,CSMS: Configuration State: CS reports V2XChargingCtrlr.SupportedOperationModes<br>that contains LocalLoadBalancing
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set local load-balancing thresholds:<br>UpperThreshold = 1000, LowerThreshold = -1000<br>UpperOffset = 200, LowerOffset = 0
+
+    CSMS->>CS: SetVariablesRequest (V2XChargingCtrlr, evse.id 1, V2XLocalLoadBalancing: UpperThreshold, LowerThreshold, UpperOffset, LowerOffset)
+    Note over CS,CSMS: Note: CSMS may send these variables in one or multiple requests
+    Note over CSMS: Validation (Step 1): SetVariablesRequest with<br>setVariableData[0]: component.name V2XChargingCtrlr, component.evse.id 1,<br>variable.name V2XLocalLoadBalancing, variable.instance UpperThreshold, attributeValue 2000<br>setVariableData[1]: component.name V2XChargingCtrlr, component.evse.id 1,<br>variable.name V2XLocalLoadBalancing, variable.instance LowerThreshold, attributeValue -1000<br>setVariableData[2]: component.name V2XChargingCtrlr, component.evse.id 1,<br>variable.name V2XLocalLoadBalancing, variable.instance UpperOffset, attributeValue 200<br>setVariableData[3]: component.name V2XChargingCtrlr, component.evse.id 1,<br>variable.name V2XLocalLoadBalancing, variable.instance LowerOffset, attributeValue 0<br>Alternatively these may be sent as individual requests<br>(Header discrepancy: manual action says UpperThreshold = 1000, validation says 2000)
+
+    CS-->>CSMS: SetVariablesResponse (attributeStatus = Accepted for UpperThreshold, LowerThreshold, UpperOffset, LowerOffset)
+    Note right of CS: setVariableResult[0..3]: component.name V2XChargingCtrlr, component.evse.id 1,<br>variable.name V2XLocalLoadBalancing,<br>[0] variable.instance UpperThreshold, attributeStatus Accepted<br>[1] variable.instance LowerThreshold, attributeStatus Accepted<br>[2] variable.instance UpperOffset, attributeStatus Accepted<br>[3] variable.instance LowerOffset, attributeStatus Accepted
+
+    Note over CS,CSMS: CSMS sets a Charging Profile with LocalLoadBalancing
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxDefaultProfile Charging Profile<br>with chargingSchedulePeriod with operationMode LocalLoadBalancing
+
+    CSMS->>CS: SetChargingProfileRequest (TxDefaultProfile, operationMode = LocalLoadBalancing)
+    Note over CSMS: Validation (Step 3): SetChargingProfileRequest<br>evseId must be Configured evseId<br>chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*]:<br>operationMode must be LocalLoadBalancing<br>limit(_L2/L3) must be omitted<br>dischargingLimit(_L2/L3) must be omitted<br>setpoint(_L2/L3) must be omitted<br>setpointReactive(_L2/L3) must be omitted
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)

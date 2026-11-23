@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: SetDisplayMessageRequest (message.id = <Generated Id>)
+    Note over CSMS: Validation: Message SetDisplayMessageRequest<br>- message.id <Generated Id>
+    CS-->>CSMS: SetDisplayMessageResponse (status = NotSupportedMessageFormat)
+
+    Note over CS,CSMS: Post scenario validations: N/a

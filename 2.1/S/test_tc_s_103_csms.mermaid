@@ -1,0 +1,58 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: Charging Station supports battery swapping.<br>There are enough batteries available for swapping.
+    Note over CS,CSMS: Configuration State: BatterySwapCtrlr.Idtoken is not set
+    Note over CS,CSMS: Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Let CSMS trigger a request for swapping batteries
+
+    CSMS->>CS: RequestBatterySwapRequest
+    Note over CSMS: Validation (Step 1, header names message RequestBatterySwapResponse):<br>requestId must be not omitted<br>idToken.idToken must be Configured valid_idtoken_idtoken
+    CS-->>CSMS: RequestBatterySwapResponse (status = Accepted)
+
+    Note over CS,CSMS: Note: Set of two (virtual) batteries are inserted at this point in scenario.
+
+    CS->>CSMS: Notify status change of the slot
+    CSMS-->>CS: Responds accordingly
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = CablePluggedIn,<br>idToken.idToken = empty string, idToken.type = NoAuthorization,<br>evse = Configured evseId, evse.connectorId = 1,<br>transactionInfo.transactionId = 111-222-333-444-3,<br>transactionInfo.chargingState = EVConnected)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: Notify status change of the slot
+    CSMS-->>CS: Responds accordingly
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = CablePluggedIn,<br>idToken.idToken = empty string, idToken.type = NoAuthorization,<br>evse = Configured evseId2, evse.connectorId = 1,<br>transactionInfo.transactionId = 111-222-333-444-4,<br>transactionInfo.chargingState = EVConnected)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: BatterySwapRequest (eventType = BatteryIn, requestId = requestId,<br>idToken.idToken = Configured valid_idtoken_idtoken,<br>batteryData[0].evseId = Configured evseId, batteryData[0].serialNumber = 1234,<br>batteryData[0].soC = 23, batteryData[0].soH = 85,<br>batteryData[1].evseId = Configured evseId2, batteryData[1].serialNumber = 5678,<br>batteryData[1].soC = 45, batteryData[1].soH = 87)
+    CSMS-->>CS: BatterySwapResponse
+    Note over CSMS: Validation: Message BatterySwapResponse
+
+    Note over CS,CSMS: Note: Set of two batteries are extracted at this point in scenario.
+    Note over CS,CSMS: Note: Steps 13 and 14 are repeated for each battery taken out
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = EnergyLimitReached,<br>idToken.idToken = empty string, idToken.type = NoAuthorization,<br>transactionInfo.transactionId = 111-222-333-444-1,<br>transactionInfo.chargingState = Idle,<br>transactionInfo.stoppedReason = EVDisconnected)
+    CS-->>CSMS: TransactionEventResponse
+    Note over CS,CSMS: Step 14: header names the Test System as responder,<br>the tool validation checks the TransactionEventResponse (as received from the CSMS)
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: Notify status change of the slot
+    CSMS-->>CS: Responds accordingly
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = EnergyLimitReached,<br>idToken.idToken = empty string, idToken.type = NoAuthorization,<br>transactionInfo.transactionId = 111-222-333-444-2,<br>transactionInfo.chargingState = Idle,<br>transactionInfo.stoppedReason = EVDisconnected)
+    CS-->>CSMS: TransactionEventResponse
+    Note over CS,CSMS: Step 18: header names the Test System as responder,<br>the tool validation checks the TransactionEventResponse (as received from the CSMS)
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted
+
+    CS->>CSMS: Notify status change of the slot
+    CSMS-->>CS: Responds accordingly
+
+    CS->>CSMS: BatterySwapRequest (eventType = BatteryOut, requestId = requestId,<br>idToken.idToken = Configured valid_idtoken_idtoken,<br>batteryData[0].evseId = Configured evseId3, batteryData[0].serialNumber = 4321,<br>batteryData[0].soC = 80, batteryData[0].soH = 95,<br>batteryData[1].evseId = Configured evseId4, batteryData[1].serialNumber = 8765,<br>batteryData[1].soC = 85, batteryData[1].soH = 78)
+    CSMS-->>CS: BatterySwapResponse
+    Note over CSMS: Validation: Message BatterySwapResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

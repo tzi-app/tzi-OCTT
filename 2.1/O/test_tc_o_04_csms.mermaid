@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: A display message is configured.
+    Note over CS,CSMS: Note: As a help method, a GetDisplayMessagesRequest is requested first<br>for CSMS's that implemented their ClearDisplayMessage as a combined feature.
+
+    CSMS->>CS: ClearDisplayMessageRequest (id)
+    Note over CSMS: Validation: Message ClearDisplayMessageRequest<br>- id <Generated Id from set display message>
+    CS-->>CSMS: ClearDisplayMessageResponse (status = Accepted)

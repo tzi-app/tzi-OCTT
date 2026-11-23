@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Header inconsistency: it states "System under test: Charging Station",<br>but the prerequisites and validations show the Test System acting as Charging Station<br>and the CSMS request being validated, so participants are labelled that way
+    Note over CS,CSMS: Prerequisite: CSMS is able to set the NetworkConfiguration component
+    Note over CS,CSMS: Prerequisite: Test System reports NetworkConfiguration variables as ReadWrite
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+    Note over CS,CSMS: In the following steps configurationSlot equals Configured non-active configurationSlot
+    Note over CS,CSMS: Request CSMS to set a network configuration that includes<br>APN connection details, but no VPN details
+
+    loop Can be sent in one or multiple messages
+        CSMS->>CS: SetVariablesRequest (component = NetworkConfiguration[Configured non-active configurationSlot])
+        CS-->>CSMS: SetVariablesResponse (setVariableResult.attributeStatus = Accepted for each variable)
+    end
+    Note over CSMS: Validation (Step 2): SetVariablesRequest (one or multiple messages) for<br>component NetworkConfiguration[Configured non-active configurationSlot] with:<br>- OcppCsmsUrl = Configured ocppCsmsUrl<br>- OcppInterface = Any<br>- OcppTransport = JSON<br>- OcppVersion = OCPP21<br>- MessageTimeout = Configured messageTimeout<br>- SecurityProfile = 2<br>- Identity = Configured charging station identity<br>- BasicAuthPassword = PasswordOfSufficientLength<br>- VpnEnabled = false<br>- ApnEnabled = true<br>- Apn = Configured APN URL<br>- ApnUserName = Configured APN username<br>- ApnPassword = Configured APN password<br>- ApnAuthentication one of PAP, CHAP, NONE, AUTO
+
+    Note over CS,CSMS: Post scenario validations: N/a

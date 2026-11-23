@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Execute Reusable State: State is Authorized
+
+    Note over CS: Wait until the configured EV connection timeout expires
+    CS->>CSMS: TransactionEventRequest (triggerReason = EVConnectTimeout, transactionInfo.stoppedReason = Timeout, eventType = Ended)
+    CSMS-->>CS: TransactionEventResponse

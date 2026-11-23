@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisites:<br>- The CSMS supports local cost calculation by CS<br>- CS has TariffCtrlr.Enabled[Tariff] = true<br>- CS has TariffCtrlr.MaxElements[Tariff] > 0<br>- CS has TariffCtrlr.ConditionsSupported[Tariff] = true
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a default tariff on EVSE 0 with<br>- validFrom<br>- Price for energy with a taxRate<br>- Price for chargingTime with a taxRate<br>- Price for idleTime with a taxRate<br>- Price for fixedFee with a taxRate<br>- Price for minCost with a taxRate<br>- Price for maxCost with a taxRate<br>- Price for reservationTime with a taxRate
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 0, tariff)
+    Note over CSMS: Validation (Step 1): SetDefaultTariffRequest<br>- evseId 0<br>- tariff.tariffId must be not omitted<br>- tariff.validFrom must be not omitted<br>- tariff.energy must be not omitted<br>- tariff.energy.taxRates must be not omitted<br>- tariff.chargingTime must be not omitted<br>- tariff.chargingTime.taxRates must be not omitted<br>- tariff.idleTime must be not omitted<br>- tariff.idleTime.taxRates must be not omitted<br>- tariff.fixedFee must be not omitted<br>- tariff.fixedFee.taxRates must be not omitted<br>- tariff.minCost must be not omitted<br>- tariff.minCost.exclTax or tariff.minCost.inclTax must be not omitted (at least one must exist)<br>- tariff.minCost.taxRates must be not omitted<br>- tariff.maxCost must be not omitted<br>- tariff.maxCost.exclTax or tariff.maxCost.inclTax must be not omitted (at least one must exist)<br>- tariff.maxCost.taxRates must be not omitted<br>- tariff.reservationTime must be not omitted<br>- tariff.reservationTime.taxRates must be not omitted
+    CS-->>CSMS: SetDefaultTariffResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a default tariff on EVSE 1 with<br>- validFrom<br>- Price for energy with a taxRate<br>- Price for chargingTime with a taxRate<br>- Price for idleTime with a taxRate<br>- Price for fixedFee with a taxRate<br>- Price for minCost with a taxRate<br>- Price for maxCost with a taxRate<br>- Price for reservationFixed with a taxRate
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 1, tariff)
+    Note over CSMS: Validation (Step 3): SetDefaultTariffRequest<br>- evseId 1<br>- tariff.tariffId must be different from tariffId step 1<br>- tariff.validFrom must be not omitted<br>- tariff.energy must be not omitted<br>- tariff.energy.taxRates must be not omitted<br>- tariff.chargingTime must be not omitted<br>- tariff.chargingTime.taxRates must be not omitted<br>- tariff.idleTime must be not omitted<br>- tariff.idleTime.taxRates must be not omitted<br>- tariff.fixedFee must be not omitted<br>- tariff.fixedFee.taxRates must be not omitted<br>- tariff.minCost must be not omitted<br>- tariff.minCost.exclTax must be not omitted<br>- tariff.minCost.inclTax must be not omitted<br>- tariff.minCost.taxRates must be not omitted<br>- tariff.maxCost must be not omitted<br>- tariff.maxCost.exclTax must be not omitted<br>- tariff.maxCost.inclTax must be not omitted<br>- tariff.maxCost.taxRates must be not omitted<br>- tariff.reservationFixed must be not omitted<br>- tariff.reservationFixed.taxRates must be not omitted
+    CS-->>CSMS: SetDefaultTariffResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to get the tariffs for EVSE 0
+
+    CSMS->>CS: GetTariffsRequest (evseId = 0)
+    Note over CSMS: Validation (Step 5): GetTariffsRequest<br>- evseId must be 0
+    CS-->>CSMS: GetTariffsResponse (status = Accepted, tariffAssignments[0] and tariffAssignments[1])
+    Note over CS: GetTariffsResponse content:<br>- tariffAssignments[0].tariffId = value of tariffId from step 1<br>- tariffAssignments[0].tariffKind DefaultTariff<br>- tariffAssignments[0].evseIds [ 2 ]<br>- tariffAssignments[0].validFrom must be not omitted<br>- tariffAssignments[1].tariffId = value of tariffId from step 3<br>- tariffAssignments[1].tariffKind DefaultTariff<br>- tariffAssignments[1].evseIds [ 1 ]<br>- tariffAssignments[1].validFrom must be not omitted
+
+    Note over CS,CSMS: Post scenario validations: N/a

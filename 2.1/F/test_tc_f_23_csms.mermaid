@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = StatusNotification, evse.id = <Configured evseId>)
+    Note over CSMS: Validation: requestedMessage must be StatusNotification<br>evse.id must be <Configured evseId>
+
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    Note over CS,CSMS: Step 3: The Test System notifies the CSMS about the current state of the connector<br>(StatusNotificationRequest or NotifyEventRequest)
+    alt Message: StatusNotificationRequest
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available, evseId = <Configured evseId>, connectorId = <Configured connectorId>)
+        CSMS-->>CS: StatusNotificationResponse
+    else Message: NotifyEventRequest
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", component.evse.id = <Configured evseId>, component.evse.connectorid = <Configured connectorId>, variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

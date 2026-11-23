@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: RequestStartTransactionRequest (idToken, evseId, chargingProfile)
+    Note over CSMS: Validation: idToken.idToken = Configured valid idToken<br>idToken.type = Configured valid idToken type<br>evseId = Configured evseId<br>chargingProfile contains:<br>chargingProfile.chargingProfilePurpose is TxProfile<br>chargingProfile.transactionId is omitted<br>chargingProfile.chargingProfileKind is Relative OR Absolute<br>If chargingProfileKind is Relative then chargingSchedule.startSchedule must be omitted<br>If chargingProfileKind is Absolute then chargingSchedule.startSchedule must NOT be omitted<br>The received Charging Profile must comply with the requirements defined at part 2 specification
+
+    CS-->>CSMS: RequestStartTransactionResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = RemoteStart, transactionInfo.remoteStartId present)
+    CSMS-->>CS: TransactionEventResponse

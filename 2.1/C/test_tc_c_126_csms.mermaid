@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS is connected with a stand-alone payment terminal
+    Note over CS,CSMS: Prerequisite: Test System has AuthCtrlr.AuthorizeRemoteStart = false
+    Note over CS,CSMS: Prerequisite: Test System has TariffCostCtrlr.Enabled[Cost] = true
+    Note over CS,CSMS: Prerequisite: Test System has TariffCostCtrlr.Currency = "EUR"
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Present a payment card to the payment terminal Kiosk<br>for Charging Station with identity <Configured unique Charging Station identifier>
+
+    CSMS->>CS: RequestStartTransactionRequest
+    Note over CSMS: Validation: evseId must be <evse><br>remoteStartId must be <not omitted><br>idToken.idToken must be <Not empty><br>idToken.type must be DirectPayment<br>idToken.additionalInfo.additionalIdToken must be <Configured CardLast4Digits><br>idToken.additionalInfo.type must be CardLast4Digits
+    CS-->>CSMS: RequestStartTransactionResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, idToken = <IdToken from step 1>,<br>idToken.type = DirectPayment, idToken.additionalInfo = <additionalInfo>,<br>transactionInfo.transactionId = <transactionId>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: transactionLimit.maxCost = <not omitted>
+
+    Note over CS,CSMS: Settlement
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, idToken = <IdToken from step 1>,<br>idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>,<br>transactionInfo.transactionLimit.maxCost = <not omitted>,<br>costDetails.totalCost.currency = EUR,<br>costDetails.totalCost.fixed.exclTax = 15.00,<br>costDetails.totalCost.fixed.inclTax = 18.15 EUR,<br>costDetails.totalCost.fixed.taxRate.type = MyTax,<br>costDetails.totalCost.fixed.taxRate.tax = 21,<br>costDetails.totalUsage.energy = 123,<br>costDetails.totalUsage.chargingTime = 5,<br>costDetails.totalUsage.idleTime = 0,<br>costDetails.chargingPeriods = <omitted>)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Note: The CSMS sends a message to Payment Kiosk or PSP<br>to settle the cost for amount 18.15 EUR
+    Note over CS,CSMS: Post scenario validations: N/a

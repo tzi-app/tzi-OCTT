@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: Test System has TxCtlr.SupportedLimits contains maxTime
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = LimitSet, transactionInfo.transactionLimit.maxTime = 120)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: transactionLimit must be omitted
+
+    Note over CS: The Test System waits for the maxTime transactionLimit to be reached
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = TimeLimitReached)
+    CSMS-->>CS: TransactionEventResponse

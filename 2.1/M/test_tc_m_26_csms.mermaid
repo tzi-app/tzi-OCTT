@@ -1,0 +1,7 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CS->>CSMS: Get15118EVCertificateRequest (action = Install)
+    CSMS-->>CS: Get15118EVCertificateResponse (status = Accepted, exiResponse)
+    Note over CSMS: Validation: status must be Accepted<br>exiResponse must be the Raw CertificateInstallationRes response for the EV, Base64 encoded

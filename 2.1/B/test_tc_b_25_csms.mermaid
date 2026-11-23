@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot an EVSE with status OnIdle
+
+    CSMS->>CS: ResetRequest (status OnIdle, evseId = <Configured evseId>)
+    Note over CSMS: Validation: Message ResetRequest<br>- type OnIdle<br>- evseId <Configured evseId>
+
+    CS-->>CSMS: ResetResponse (status = Accepted)

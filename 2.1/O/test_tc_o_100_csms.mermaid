@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS support multiple languages
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a SetDisplayMessageRequest with a certain language.<br>Test System will respond that the language is not supported.
+
+    CSMS->>CS: SetDisplayMessageRequest
+    Note over CSMS: Validation: message.id <Generated Id><br>message.priority <Configured Priority><br>message.message.language <Not omitted>
+
+    CS-->>CSMS: SetDisplayMessageResponse (status = LanguageNotSupported)
+
+    Note over CS,CSMS: Manual Action: Verify that CSMS UI reports that message was not accepted due to unknown language
+
+    Note over CS,CSMS: Post scenario validations: N/a

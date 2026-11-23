@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: Two valid idTokens with the same GroupId are configured
+    Note over CS,CSMS: Reusable State: state is EVConnectedPreSession
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = Configured valid_idtoken2_idtoken, idToken.type = Configured valid_idtoken2_type)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be Configured groupIdToken
+
+    alt Transaction was already started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = Configured valid_idtoken_idtoken, idToken.type = Configured valid_idtoken_type, eventType = Updated)
+    else Transaction not yet started
+        CS->>CSMS: TransactionEventRequest (triggerReason = Authorized, idToken.idToken = Configured valid_idtoken_idtoken, idToken.type = Configured valid_idtoken_type, eventType = Started)
+    end
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be Configured groupIdToken
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = Configured valid_idtoken2_idtoken, idToken.type = Configured valid_idtoken2_type)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be Configured groupIdToken
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = StopAuthorized, idToken.idToken = Configured valid_idtoken2_idtoken, idToken.type = Configured valid_idtoken2_type, eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>idTokenInfo.groupIdToken.idToken must be Configured groupIdToken
+
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    Note over CS,CSMS: Execute Reusable State EVDisconnected

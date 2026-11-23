@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS has an interface to the PSP<br>CSMS supports Charging Stations with integrated payment terminals
+    Note over CS,CSMS: Prerequisite: Test System has PaymentCtrlr.Enabled = true<br>PaymentCtrlr.AuthorizeDirectPayment = false<br>PaymentCtrlr.AuthorizeAmount = 50.00<br>PaymentCtrlr.PaymentDetails = "CardLast4Digits"<br>PaymentCtrlr.SettlementByCSMS = true<br>Value of PaymentCtrlr.ReceiptByCSMS is irrelevant
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, idToken = <PspRef>, idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>, idToken.additionalInfo[0].additionalIdToken = <not omitted>, idToken.additionalInfo[0].type = CardLast4Digits, transactionInfo.transactionLimit.maxCost = 50.00)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, idToken = <PspRef>, idToken.type = DirectPayment, triggerReason = StopAuthorized, transactionInfo.stoppedReason = Local, transactionInfo.transactionId = <transactionId>, costDetails.totalCost.currency = EUR, costDetails.totalCost.fixed.exclTax = 15.00, costDetails.totalCost.fixed.inclTax = 18.15 EUR, costDetails.totalCost.fixed.taxRate.type = MyTax, costDetails.totalCost.fixed.taxRate.tax = 21, costDetails.totalUsage.energy = 123, costDetails.totalUsage.chargingTime = 5, costDetails.totalUsage.idleTime = 0, costDetails.chargingPeriods = <omitted>)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Note: The CSMS settles the total cost of the transaction<br>with the payment service provider for amount of 18.15 EUR

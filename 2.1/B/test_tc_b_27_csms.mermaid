@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot the charging EVSE with status Immediate
+
+    CSMS->>CS: ResetRequest (status Immediate, evseId = <Configured evseId>)
+    Note over CSMS: Validation: Message ResetRequest<br>- type Immediate<br>- evseId <Configured evseId>
+    CS-->>CSMS: ResetResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = ResetCommand, transactionInfo.chargingState = EVConnected, transactionInfo.stoppedReason = ImmediateReset)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

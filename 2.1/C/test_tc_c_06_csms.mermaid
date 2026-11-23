@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration: The IdToken configured as Blocked at the Test System<br>must be set as Blocked at the CSMS
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <Configured blocked_idtoken_idtoken>, idToken.type = <Configured blocked_idtoken_type>)
+    CSMS-->>CS: AuthorizeResponse (idTokenInfo.status = Blocked or Invalid)
+    Note over CSMS: Validation: AuthorizeResponse<br>idTokenInfo.status must be Blocked or Invalid

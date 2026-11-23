@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports prepaid cards
+    Note over CS,CSMS: Prerequisite: Prepaid card with an amount of "0" is available
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <prepaid card no credit id>, idToken.type = <prepaid card no credit id type>)
+    CSMS-->>CS: AuthorizeResponse (idTokenInfo.status = NoCredit)
+    Note over CSMS: Validation: idTokenInfo.status must be NoCredit<br>idTokenInfo.cacheExpiryDateTime must be <current date/time>

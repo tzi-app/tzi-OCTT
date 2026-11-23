@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the availability of the Charging Station to Inoperative
+
+    CSMS->>CS: ChangeAvailabilityRequest (operationalStatus = Inoperative)
+    Note over CSMS: Validation: operationalStatus Inoperative<br>evseId omitted<br>connectorId omitted
+
+    CS-->>CSMS: ChangeAvailabilityResponse (status = Accepted)
+
+    loop For all connectors
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Unavailable)
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Unavailable", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: StatusNotificationResponse
+        CSMS-->>CS: NotifyEventResponse
+    end

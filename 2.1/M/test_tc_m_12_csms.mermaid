@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: 1. Execute Reusable State GetInstalledCertificates<br>for certificateType CSMSRootCertificate.<br>The Test System responds with data hashed with SHA256.
+
+    Note over CS,CSMS: 2. Execute Reusable State GetInstalledCertificates<br>for certificateType CSMSRootCertificate.<br>The Test System responds with data hashed with SHA384.
+
+    Note over CS,CSMS: 3. Execute Reusable State GetInstalledCertificates<br>for certificateType CSMSRootCertificate.<br>The Test System responds with data hashed with SHA512.
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

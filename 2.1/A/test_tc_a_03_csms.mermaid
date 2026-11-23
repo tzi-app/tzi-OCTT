@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 1 and/or 2
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CS->>CSMS: HTTP upgrade request (without Authorization header)
+    CSMS-->>CS: Reject connection upgrade request
+
+    CS->>CSMS: HTTP upgrade request (with Authorization header, username/password combination)
+    Note right of CS: AUTHORIZATION: Basic Base64(Configured ChargingStationId:random password)<br>Password: randomly chosen identifierString with sufficiently high entropy,<br>minimum 16 and maximum 40 characters (alpha-numeric characters<br>and the special characters allowed by identifierString)
+
+    CSMS->>CSMS: Validate username/password combination
+    CSMS-->>CS: Reject connection upgrade request
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

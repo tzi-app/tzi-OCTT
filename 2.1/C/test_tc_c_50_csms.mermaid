@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+    participant OCSP as OCSP Service (Test System)
+
+    Note over CS,CSMS: Prerequisites:<br>- The configured eMAID is known by the CSMS as valid<br>- The configured contract certificate is valid<br>- The CN of the configured contract certificate equals the configured eMAID<br>- iso15118CertificateHashData has a responder URL that points to an OCSP service for Test System<br>- CSMS does not have a cached OCSP response for the contract certificate
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EVConnectedPreSession
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = Configured eMAID, idToken.type = eMAID, iso15118CertificateHashData = hashes from configured (V2G) certificate chain)
+
+    CSMS->>OCSP: OCSP request to responder URL of iso15118CertificateHashData to check validity
+    Note over CSMS: Validation: CSMS sends an OCSP request for iso15118CertificateHashData
+
+    OCSP-->>CSMS: OCSP response (certificate is valid)
+    Note over OCSP: Validation: Test System checks that received request<br>for iso15118CertificateHashData is valid
+
+    CSMS-->>CS: AuthorizeResponse (idTokenInfo.status = Accepted, certificateStatus = Accepted)
+    Note over CSMS: Validation: idTokenInfo.status Accepted<br>certificateStatus Accepted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = Authorized)
+    CSMS-->>CS: TransactionEventResponse (idTokenInfo.status = Accepted)
+    Note over CSMS: Validation: idTokenInfo.status Accepted
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted

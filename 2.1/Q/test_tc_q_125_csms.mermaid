@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Prerequisite: CS supports V2XChargingCtrlr.V2XSupportedOperationModes containing Idle
+    Note over CS,CSMS: Prerequisite: CS supports SmartChargingCtrlr.SupportsFeature[EvseSleep] = true
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+
+    Note over CS,CSMS: Execute Reusable State ISO15118-20 transaction started in V2X AC_BPT energy transfer mode
+
+    Note over CS,CSMS: Without EVSE sleeping
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxProfile Charging Profile<br>with chargingSchedulePeriod with operationMode Idle and evseSleep false
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose must be TxProfile<br>chargingSchedulePeriod.operationMode must be Idle<br>chargingSchedulePeriod.evseSleep must be false<br>chargingSchedulePeriod.limit must be omitted<br>chargingSchedulePeriod.dischargingLimit must be omitted<br>chargingSchedulePeriod.setpoint must be omitted<br>chargingSchedulePeriod.setpointReactive must be omitted
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = OperationModeChanged,<br>transactionInfo.transactionId = <transactionId>, transactionInfo.operationMode = Idle, evseSleep = false)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: With EVSE sleeping
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxProfile Charging Profile<br>with chargingSchedulePeriod with operationMode Idle and evseSleep true
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose must be TxProfile<br>chargingSchedulePeriod.operationMode must be Idle<br>chargingSchedulePeriod.evseSleep must be true<br>chargingSchedulePeriod.limit must be omitted<br>chargingSchedulePeriod.dischargingLimit must be omitted<br>chargingSchedulePeriod.setpoint must be omitted<br>chargingSchedulePeriod.setpointReactive must be omitted
+    CS-->>CSMS: SetChargingProfileResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = MeterValuePeriodic,<br>transactionInfo.transactionId = <transactionId>, transactionInfo.operationMode = Idle, evseSleep = true)
+    CSMS-->>CS: TransactionEventResponse

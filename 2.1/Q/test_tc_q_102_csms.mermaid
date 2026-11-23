@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Prerequisite: CSMS can be configured or influenced so it is not able<br>to determine a list of allowedEnergyTransfer
+    Note over CS,CSMS: Configuration: Configure the CSMS so that it is unable<br>to determine a list of allowedEnergyTransfer
+
+    Note over CS,CSMS: Prepare CSMS with needed meta data from device model
+    Note over CS,CSMS: Manual Action: trigger CSMS to get the base report
+
+    CSMS->>CS: GetBaseReportRequest
+    Note over CSMS: Validation: reportBase must be FullInventory
+    CS-->>CSMS: GetBaseReportResponse (status = Accepted)
+
+    CS->>CSMS: NotifyReportRequest (requestId = GetBaseReportRequest.requestId of step 1, reportData[0].component.name = V2XChargingCtrlr, reportData[0].component.evse.id = 1, reportData[0].variable.name = V2XEnabled, reportData[0].variableAttribute.value = true)
+    CSMS-->>CS: NotifyReportResponse
+
+    Note over CS,CSMS: Start transaction
+
+    CS->>CSMS: AuthorizeRequest
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>allowedEnergyTransfer must be omitted

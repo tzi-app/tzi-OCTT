@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Tester makes Test System send a NotifyEventRequest message
+
+    loop Steps 1 and 2 are repeated n times
+        CS->>CSMS: NotifyEventRequest (periodic event)
+        CSMS-->>CS: NotifyEventResponse
+        Note over CSMS: Validation: NotifyEventResponse with empty body
+    end

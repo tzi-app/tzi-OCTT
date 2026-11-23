@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: ISO15118-20 transaction just started<br>exposing allowedEnergyTransferModes and transactionId
+
+    Note over CS,CSMS: Agree on energy transfer mode
+
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = Configured evseId,<br>chargingNeeds.requestedEnergyTransfer = one different than mentioned in allowedEnergyTransferModes or if omitted AC_BPT,<br>chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_two_phase, AC_three_phase, AC_BPT, AC_BPT_DER, AC_DER],<br>chargingNeeds.controlMode = ScheduledControl,<br>chargingNeeds.v2xChargingParameters.maxChargePower = 1234W,<br>chargingNeeds.v2xChargingParameters.maxDischargePower = 0W)
+    CSMS-->>CS: NotifyEVChargingNeedsResponse (status = Rejected)
+    Note over CSMS: Validation: status must be Rejected
+
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = FirmwareStatusNotification)
+    Note over CSMS: Validation: requestedMessage must be FirmwareStatusNotification
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Idle)
+    CSMS-->>CS: FirmwareStatusNotificationResponse

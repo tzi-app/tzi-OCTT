@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Bidirectional Power Transfer
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxDefaultProfile, Relative Charging Profile<br>with chargingSchedulePeriod with operationMode ExternalSetpoint
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfilePurpose = TxDefaultProfile, chargingProfileKind = Relative, operationMode = ExternalSetpoint)
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfile.chargingProfilePurpose must be TxDefaultProfile<br>chargingProfile.chargingProfileKind Relative<br>chargingProfile.dynUpdateTime must be <omitted><br>chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*].operationMode must be ExternalSetpoint<br>chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*].setpoint must be <not omitted>
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a TxDefaultProfile, Dynamic Charging Profile<br>with chargingSchedulePeriod with operationMode ExternalSetpoint
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfilePurpose = TxDefaultProfile, chargingProfileKind = Dynamic, operationMode = ExternalSetpoint)
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfile.chargingProfilePurpose must be TxDefaultProfile<br>chargingProfile.chargingProfileKind Dynamic<br>chargingProfile.dynUpdateTime must be <Datetime of moment of step 3><br>chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*].operationMode must be ExternalSetpoint<br>chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*].setpoint must be <not omitted><br>chargingProfile.chargingSchedule[0].chargingSchedulePeriod size must be 1<br>chargingProfile.chargingSchedule[0].chargingSchedulePeriod[0].startPeriod must be 0
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

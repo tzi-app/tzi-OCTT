@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 1 and/or 2
+
+    CS->>CSMS: HTTP upgrade request with Authorization header (username/password combination)
+    Note right of CS: AUTHORIZATION: Basic Base64(Configured ChargingStationId + Invalid:Configured basicAuthPassword)<br>Username does not equal ChargingStationId
+
+    CSMS->>CSMS: Validate username/password combination
+    CSMS-->>CS: Reject connection upgrade request

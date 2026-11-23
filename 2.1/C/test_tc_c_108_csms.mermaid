@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports VAT number validation
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Valid VAT number with EVSE ID
+    CS->>CSMS: VatNumberValidationRequest (vatNumber = <validVatNumber>, evseId = 1)
+    CSMS-->>CS: VatNumberValidationResponse
+    Note over CSMS: Validation: vatNumber must be <validVatNumber><br>evseId must be 1<br>status must be Accepted
+
+    Note over CS,CSMS: Invalid VAT number with EVSE ID
+    CS->>CSMS: VatNumberValidationRequest (vatNumber = <invalidVatNumber>, evseId = 1)
+    CSMS-->>CS: VatNumberValidationResponse
+    Note over CSMS: Validation: vatNumber must be <invalidVatNumber><br>evseId must be 1<br>status must be Rejected
+
+    Note over CS,CSMS: Valid VAT number without EVSE ID
+    CS->>CSMS: VatNumberValidationRequest (vatNumber = <validVatNumber>, evseId = <omitted>)
+    CSMS-->>CS: VatNumberValidationResponse
+    Note over CSMS: Validation: vatNumber must be <validVatNumber><br>evseId must be <omitted><br>status must be Accepted
+
+    Note over CS,CSMS: Invalid VAT number without EVSE ID
+    CS->>CSMS: VatNumberValidationRequest (vatNumber = <invalidVatNumber>, evseId = <omitted>)
+    CSMS-->>CS: VatNumberValidationResponse
+    Note over CSMS: Validation: vatNumber must be <invalidVatNumber><br>evseId must be <omitted><br>status must be Rejected
+
+    Note over CS,CSMS: Post scenario validations: N/a

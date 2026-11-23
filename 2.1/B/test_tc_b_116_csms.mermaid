@@ -1,0 +1,56 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to set a Charging Profile of type TxProfile on <transactionId>
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose must be TxProfile
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot the Charging Station with status ImmediateAndResume
+
+    CSMS->>CS: ResetRequest
+    Note over CSMS: Validation: type must be ImmediateAndResume
+    CS-->>CSMS: ResetResponse (status = Accepted)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = ResetCommand)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: BootNotificationRequest (reason = RemoteReset)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: Step 9: Test System notifies the CSMS about the current state of all connectors<br>Step 10: CSMS responds accordingly
+
+    alt StatusNotificationRequest is used
+        CS->>CSMS: StatusNotificationRequest (Configured connectorId, connectorStatus = Occupied)
+        CSMS-->>CS: StatusNotificationResponse
+    else NotifyEventRequest is used
+        CS->>CSMS: NotifyEventRequest (Configured connectorId, trigger = Delta, actualValue = "Occupied", component.name = "Connector", variable.name = "AvailabilityState")
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    loop For each other connector
+        alt StatusNotificationRequest is used
+            CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+            CSMS-->>CS: StatusNotificationResponse
+        else NotifyEventRequest is used
+            CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+            CSMS-->>CS: NotifyEventResponse
+        end
+    end
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = TxResumed, idToken omitted)
+    CSMS-->>CS: TransactionEventResponse
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: must either contain an identical chargingProfile as in Step 1<br>or identical from the time of step 11 onwards
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

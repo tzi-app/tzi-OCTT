@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a dynamic charging profile to the CS
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfile.chargingProfileKind must be Dynamic<br>chargingProfile.chargingSchedule must be size = 1<br>chargingProfile.chargingSchedule[0].chargingSchedulePeriods must be size = 1<br>chargingProfile.chargingSchedule[0].chargingSchedulePeriod[0].startPeriod must be 0
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: PullDynamicScheduleUpdateRequest (chargingProfileId = unknown chargingProfileId)
+    CSMS-->>CS: PullDynamicScheduleUpdateResponse
+    Note over CSMS: Validation: status must be Rejected
+
+    CS->>CSMS: PullDynamicScheduleUpdateRequest (chargingProfileId = chargingProfileId received in step 1)
+    CSMS-->>CS: PullDynamicScheduleUpdateResponse
+    Note over CSMS: Validation: status must be Accepted<br>scheduleUpdate must be not omitted<br>scheduleUpdate must at least have a single field set
+
+    Note over CS,CSMS: Post scenario validations: N/a

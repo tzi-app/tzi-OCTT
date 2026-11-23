@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS allows specifying an energy limit
+    Note over CS,CSMS: Prerequisite: Test System has TxCtrlr.SupportedLimits contains maxEnergy
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = LimitSet, transactionInfo.transactionLimit.maxEnergy = 6000)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Manual Action: Configure the CSMS to override the max energy limit to 10000 (Wh)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: transactionLimit.maxEnergy must be 10000
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = LimitSet, transactionInfo.transactionLimit.maxEnergy = 10000)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: transactionLimit is omitted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = EnergyLimitReached)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

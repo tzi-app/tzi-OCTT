@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CSMS->>CS: GetCompositeScheduleRequest (evseId = 1, duration, chargingRateUnit)
+    Note over CSMS: Validation: Message GetCompositeScheduleRequest<br>evseId 1<br>duration is <Configured duration><br>chargingRateUnit <Configured chargingRateUnit>
+
+    CS-->>CSMS: GetCompositeScheduleResponse (status = Accepted, schedule.evseId = 1, schedule.duration = 300, schedule.chargingRateUnit = <Specified chargingRateUnit from step 1>, schedule.chargingSchedulePeriod[0].startPeriod = 0, schedule.chargingSchedulePeriod[0].limit = 10)
+    Note right of CS: Multiply limit by 1000 if chargingRateUnit is W
+
+    Note over CS,CSMS: Post scenario validations: N/a

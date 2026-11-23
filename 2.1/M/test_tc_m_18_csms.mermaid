@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Trigger the CSMS to send a GetInstalledCertificateIdsRequest without certificateType
+
+    CSMS->>CS: GetInstalledCertificateIdsRequest (certificateType omitted)
+    Note over CSMS: Validation: certificateType is omitted
+
+    CS-->>CSMS: GetInstalledCertificateIdsResponse (status = Accepted, certificateHashDataChain = hashData of all certificates stored at the Test System truststore)

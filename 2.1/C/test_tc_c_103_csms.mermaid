@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports prepaid cards
+    Note over CS,CSMS: Prerequisite: Prepaid card with positive amount is available
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    CS->>CSMS: AuthorizeRequest (idToken.idToken = <prepaid card id>, idToken.type = <prepaid card id type>)
+    CSMS-->>CS: AuthorizeResponse
+    Note over CSMS: Validation: idTokenInfo.status Accepted<br>idTokenInfo.cacheExpiryDateTime <current date/time>
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, idToken.idToken = <prepaid card id>, idToken.type = <prepaid card id type>)
+    CSMS-->>CS: TransactionEventResponse
+    Note over CSMS: Validation: idTokenInfo.status Accepted<br>idTokenInfo.cacheExpiryDateTime <cacheExpiryDateTime from step 2><br>transactionLimit.maxCost = <not omitted>

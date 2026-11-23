@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: n/a<br>Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: Charging Station set to Unavailable<br>(Original status was Available)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the availability<br>of the Charging Station to Inoperative.
+
+    CSMS->>CS: ChangeAvailabilityRequest (operationalStatus = Operative)
+    Note over CSMS: Validation: operationalStatus must be Operative<br>evseId must be omitted<br>connectorId must be omitted
+
+    CS-->>CSMS: ChangeAvailabilityResponse (status = Accepted)
+
+    loop For all connectors
+        Note over CS,CSMS: The Test System notifies the CSMS about the current state of the connector
+        CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+        CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Available, component.name = Connector, variable.name = AvailabilityState)
+        CSMS-->>CS: StatusNotificationResponse
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    Note over CS,CSMS: Post scenario validations: N/a

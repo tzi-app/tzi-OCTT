@@ -1,0 +1,37 @@
+"""
+Test case name      Local start transaction - Authorization first - Success
+Test case Id        TC_E_04_CSMS
+Use case Id(s)      E03
+Requirement(s)      E03.FR.02
+
+Requirement Details:
+    E03.FR.02: The CSMS SHALL send a TransactionEventResponse that includes an authorization status.
+        Precondition: E03.FR.01
+System under test   CSMS
+
+Description         OCPP 2.x.x allows an EV driver to either first connect the EV and EVSE OR present a form
+                    of identification.
+                    Both sequences will result in being able to charge.
+
+Purpose             To verify if the CSMS is able to handle a Charging Station that is able to start a
+                    charging session when the
+                    EV driver first presents a form of identification, before connecting the EV and EVSE.
+
+Prerequisite(s)     N/a
+
+Configuration State N/a
+
+Memory State        N/a
+
+Reusable State(s)   N/a
+
+Test Scenario
+1. Execute Reusable State Authorized
+2. Execute Reusable State EnergyTransferStarted
+
+Tool validations
+N/a
+
+Post scenario validations:
+    N/a
+"""

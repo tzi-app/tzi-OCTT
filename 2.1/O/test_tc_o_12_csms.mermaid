@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: A display message is configured
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a display message<br>with the same id as the already configured one
+
+    CSMS->>CS: SetDisplayMessageRequest (message.id = <Configured_Id>, message.priority = <Configured Priority>)
+    CS-->>CSMS: SetDisplayMessageResponse (status = Accepted)
+    Note over CSMS: Validation: SetDisplayMessageRequest<br>- message.id <Configured_Id><br>- message.priority <Configured Priority>

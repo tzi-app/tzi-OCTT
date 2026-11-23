@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: Disconnect the connection
+    Note over CS: Wait the <Configured transaction duration>
+    CS->>CSMS: Restore the connection
+
+    CS->>CSMS: BootNotificationRequest
+    CSMS-->>CS: BootNotificationResponse (status = Accepted)
+    Note over CSMS: Validation: status Accepted
+
+    loop For each connector
+        alt Configured EVSE.Connector
+            CS->>CSMS: NotifyEventRequest (eventData[0].trigger = Delta, component.name = "Connector", variable.name = "AvailabilityState", actualValue = "Occupied")
+            CSMS-->>CS: NotifyEventResponse
+        else Other connectors
+            CS->>CSMS: NotifyEventRequest (eventData[0].trigger = Delta, component.name = "Connector", variable.name = "AvailabilityState", actualValue = "Available")
+            CSMS-->>CS: NotifyEventResponse
+        end
+    end
+
+    CS->>CSMS: SecurityEventNotificationRequest (type = StartupOfTheDevice OR ResetOrReboot)
+    CSMS-->>CS: SecurityEventNotificationResponse
+
+    CS->>CSMS: NotifyEventRequest (eventData.trigger = Delta, transactionId = <transactionId from this transaction>, eventNotificationType = HardWiredNotification, severity = 3, actualValue = true, component.name = ElectricalFeed, variable.name = Problem)
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: NotifyEventRequest (same content as step 7, but eventData.actualValue = false)
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = TxResumed, transactionInfo.transactionId = <transactionId>, transactionInfo.chargingState = Charging)
+    CSMS-->>CS: TransactionEventResponse

@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CS->>CSMS: Disconnect WebSocket connection, reconnect with HTTP upgrade request (Sec-WebSocket-Protocol: ocpp0.1)
+    CSMS-->>CS: Reject connection attempt (connection NOT upgraded to WebSocket)
+
+    CS->>CSMS: Disconnect WebSocket connection, reconnect with HTTP upgrade request (Sec-WebSocket-Protocol: ocpp0.1,ocpp<Selected OCPP version>)
+    CSMS-->>CS: Accept connection attempt (connection upgraded to WebSocket)
+    Note over CSMS: Validation: The authorization header of the HTTP upgrade response<br>must contain the header Sec-Websocket-Protocol, formatted as follows,<br>Sec-WebSocket-Protocol: ocpp<Selected OCPP version>

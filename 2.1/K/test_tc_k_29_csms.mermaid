@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CSMS->>CS: GetChargingProfilesRequest (evseId = 0)
+    Note over CSMS: Validation: evseId 0 AND<br>chargingProfile.chargingProfilePurpose = Configured chargingProfilePurpose AND<br>chargingProfile.stackLevel must be omitted AND<br>chargingProfile.chargingLimitSource must be omitted AND<br>chargingProfile.chargingProfileId must be omitted<br>Note: chargingProfilePurpose is included, because the chargingProfile field is required and may not be left empty
+    CS-->>CSMS: GetChargingProfilesResponse (status = Accepted)
+    CS->>CSMS: ReportChargingProfilesRequest (requestId = Received requestId)
+    CSMS-->>CS: ReportChargingProfilesResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

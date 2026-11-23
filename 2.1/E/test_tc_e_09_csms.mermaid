@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Occupied)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Occupied, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: StatusNotificationResponse
+    CSMS-->>CS: NotifyEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = CablePluggedIn, evse.id = <Configured evseId>, evse.connectorId = <Configured connectorId>, transactionInfo.chargingState = EVConnected)
+    CSMS-->>CS: TransactionEventResponse

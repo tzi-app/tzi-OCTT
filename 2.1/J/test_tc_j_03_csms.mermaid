@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted
+
+    Note over CS,CSMS: Note: Step 1 is executed after the configured transaction duration is reached.<br>This causes the transaction to stop.
+
+    Note over CS,CSMS: 1. Execute Reusable State EVDisconnected
+    Note right of CS: The TransactionEventRequest containing eventType Ended contains the MeterValue field<br>timestamp: the intervals between the timestamps of the received Meter Value messages equal<br>the configured value at configured clock-aligned Tx ended Meter Values interval<br>sampledValue.context is Sample.Clock AND the last one has Transaction.End

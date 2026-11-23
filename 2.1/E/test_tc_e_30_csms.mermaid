@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CSMS->>CS: GetTransactionStatusRequest (transactionId)
+    Note over CSMS: Validation: transactionId must be <Generated transactionId from Before>
+    CS-->>CSMS: GetTransactionStatusResponse (ongoingIndicator = true, messagesInQueue = false)

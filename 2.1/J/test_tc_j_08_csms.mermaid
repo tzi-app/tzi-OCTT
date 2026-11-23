@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: 1. Execute Reusable State Authorized
+
+    Note over CS,CSMS: 2. Execute Reusable State EVConnectedPreSession<br>- The TransactionEventRequest contains the MeterValue field<br>- sampledValue.context is Transaction.Begin
+
+    Note over CS,CSMS: 3. Execute Reusable State EnergyTransferStarted
+
+    Note over CS,CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

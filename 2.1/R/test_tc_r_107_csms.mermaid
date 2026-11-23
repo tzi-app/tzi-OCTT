@@ -1,0 +1,70 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports DER Control
+    Note over CS,CSMS: Prerequisite: Test System must report support for<br>component.name ACDERCtrlr, variable.name ModesSupported,<br>variableAttribute.value [FreqWatt, FreqDroop, LimitMaxDischarge, Gradients, EnterService]
+    Note over CS,CSMS: Configuration State: N/a, Memory State: N/a, Reusable State(s): N/a
+
+    Note over CS,CSMS: Test ClearDERControl
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a ClearDERControlRequest with isDefault true
+    CSMS->>CS: ClearDERControlRequest (isDefault = true)
+    Note over CSMS: Validation: isDefault true
+    CS-->>CSMS: ClearDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a ClearDERControlRequest with isDefault false
+    CSMS->>CS: ClearDERControlRequest (isDefault = false)
+    Note over CSMS: Validation: isDefault false
+    CS-->>CSMS: ClearDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Test SetDERControl
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a SetDERControlRequest with isDefault true,<br>controlType FreqDroop with priority 6
+    CSMS->>CS: SetDERControlRequest (isDefault = true, controlType = FreqDroop, freqDroop.priority = 6)
+    Note over CSMS: Validation: isDefault must be true<br>controlType must be FreqDroop<br>freqDroop.priority must be 6<br>freqDroop.startTime must be omitted<br>freqDroop.duration must be omitted<br>Other optional fields must be omitted
+    CS-->>CSMS: SetDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a SetDERControlRequest with isDefault false,<br>controlType FreqWatt with a startTime, duration of 900 and priority 4
+    CSMS->>CS: SetDERControlRequest (isDefault = false, controlType = FreqWatt, curve.priority = 4, curve.startTime, curve.duration = 900)
+    Note over CSMS: Validation: isDefault must be false<br>controlType must be FreqWatt<br>curve.priority must be 4<br>curve.startTime must be present (not omitted)<br>curve.duration must be 900<br>curve.curveData[*].x must be present (not omitted)<br>curve.curveData[*].y must be present (not omitted)<br>Other optional fields must be omitted
+    CS-->>CSMS: SetDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a SetDERControlRequest<br>for controlType EnterService with priority = 1
+    CSMS->>CS: SetDERControlRequest (controlType = EnterService, enterService.priority = 1)
+    Note over CSMS: Validation: isDefault must be false<br>controlType must be EnterService<br>enterService must be present (not omitted)<br>enterService.priority must be 1<br>Other optional fields must be omitted
+    CS-->>CSMS: SetDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Test GetDERControl
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a GetDERControlRequest with isDefault true
+    CSMS->>CS: GetDERControlRequest (isDefault = true)
+    Note over CSMS: Validation: isDefault must be true
+    CS-->>CSMS: GetDERControlResponse (status = Accepted)
+    CS->>CSMS: ReportDERControlRequest (enterService, freqDroop)
+    Note right of CS: enterService:<br>id = "enterservice_1"<br>enterService.highVoltage = 250<br>enterService.lowVoltage = 210<br>enterService.highFreq = 50.5<br>enterService.lowFreq = 49.5<br>enterService.priority = 1
+    Note right of CS: freqDroop:<br>id = "freqdroop_1"<br>isDefault = true<br>isSuperseded = false<br>freqDroop.priority must be 6<br>freqDroop.overFreq = 50.5<br>freqDroop.underFreq = 49.5<br>freqDroop.overDroop = 0.05<br>freqDroop.underDroop = 0.05<br>freqDroop.responseTime = 10
+    CSMS-->>CS: ReportDERControlResponse
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a GetDERControlRequest with isDefault false
+    CSMS->>CS: GetDERControlRequest (isDefault = false)
+    Note over CSMS: Validation: isDefault must be false
+    CS-->>CSMS: GetDERControlResponse (status = Accepted)
+    CS->>CSMS: ReportDERControlRequest (curve)
+    Note right of CS: curve:<br>id = "freqwatt_1"<br>curveType = "FreqWatt"<br>isDefault = false<br>isSuperseded = false<br>curve.priority = 4<br>curve.yUnit = "PctMaxW"<br>curvedata[0]: x = 49, y = 75<br>curvedata[1]: x = 49.5, y = 90<br>curvedata[2]: x = 50.5, y = 100<br>curvedata[3]: x = 51, y = 100<br>curve.startTime = current time<br>curve.duration = 900
+    CSMS-->>CS: ReportDERControlResponse
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a GetDERControlRequest with controlType LimitMaxDischarge
+    CSMS->>CS: GetDERControlRequest (controlType)
+    Note over CSMS: Validation: controlType must be VoltVar
+    CS-->>CSMS: GetDERControlResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: trigger CSMS to send a GetDERControlRequest with a controlId
+    CSMS->>CS: GetDERControlRequest (controlId)
+    Note over CSMS: Validation: controlId must be present (not omitted)
+    CS-->>CSMS: GetDERControlResponse (status = Accepted)
+    CS->>CSMS: NotifyDERStartStopRequest (controlId, started = true, timestamp, supersededIds)
+    Note right of CS: controlId = SetDERControlRequest.controlId of step 11<br>started = true<br>timestamp = current date/time<br>supersededIds = [SetDERControlRequest.controlId of step 9]
+    CSMS-->>CS: NotifyDERStartStopResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

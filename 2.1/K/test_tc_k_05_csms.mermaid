@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    Note over CS,CSMS: Memory State:
+    CSMS->>CS: GetChargingProfilesRequest
+    CS-->>CSMS: GetChargingProfilesResponse (status = Accepted)
+    CS->>CSMS: ReportChargingProfilesRequest
+    CSMS-->>CS: ReportChargingProfilesResponse
+
+    Note over CS,CSMS: Test Scenario
+    CSMS->>CS: ClearChargingProfileRequest (chargingProfileId = <Generated chargingProfileId>, chargingProfileCriteria omitted)
+    Note over CSMS: Validation: Message ClearChargingProfileRequest<br>- chargingProfileId <Generated chargingProfileId> AND<br>- chargingProfileCriteria omit
+    CS-->>CSMS: ClearChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validations: N/a

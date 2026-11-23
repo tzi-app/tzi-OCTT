@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a SetDisplayMessageRequest with a endTime
+
+    CSMS->>CS: SetDisplayMessageRequest (message.id, message.endDateTime)
+    Note over CSMS: Validation: Message SetDisplayMessageRequest<br>- message.id <Generated Id><br>- message.endDateTime <Configured endDateTime>
+    CS-->>CSMS: SetDisplayMessageResponse (status = Accepted)

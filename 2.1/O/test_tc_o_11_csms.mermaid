@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: If the CSMS is able to send a GetDisplayMessage with an unknown id
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: A display message is configured
+    Note over CS,CSMS: Reusable State: N/a
+
+    CSMS->>CS: GetDisplayMessagesRequest (id, requestId)
+    Note over CSMS: Validation: Message GetDisplayMessagesRequest<br>- id = A different generated Id<br>- requestId = Generated Id
+
+    CS-->>CSMS: GetDisplayMessagesResponse (status = Unknown)
+
+    Note over CS,CSMS: Post scenario validations: N/a

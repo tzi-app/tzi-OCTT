@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: 1. Execute Reusable State EnergyTransferStarted<br>Note: New transaction will use seqNo 0 for the first TransactionEventRequest
+    Note over CSMS: Validation: CSMS accepts the message TransactionEventRequest<br>with eventType = Started and seqNo = 0<br>and answers with a TransactionEventResponse message
+
+    Note over CS,CSMS: 2. Execute Reusable State EVDisconnected
+
+    Note over CS,CSMS: 3. Execute Reusable State EnergyTransferStarted<br>Note: New transaction will use seqNo 0 for the first TransactionEventRequest
+    Note over CSMS: Validation: CSMS accepts the message TransactionEventRequest<br>with eventType = Started and seqNo = 0<br>and answers with a TransactionEventResponse message
+
+    Note over CS,CSMS: 4. Execute Reusable State EVDisconnected
+
+    Note over CS,CSMS: Post scenario validations: N/a

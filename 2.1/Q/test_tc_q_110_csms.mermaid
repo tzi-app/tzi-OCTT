@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Bidirectional Power Transfer
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a TxDefaultProfile dynamic charging profile to the CS with<br>- dynUpdateInterval 15
+
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: chargingProfile.chargingProfileKind must be Dynamic<br>chargingProfile.dynUpdateInterval must be 15<br>chargingProfile.dynUpdateTime must be not omitted<br>chargingProfile.chargingSchedule must be size = 1<br>chargingProfile.chargingSchedule[0].chargingSchedulePeriods must be size = 1<br>chargingProfile.chargingSchedule[0].chargingSchedulePeriod[0].startPeriod must be 0
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    CS->>CSMS: PullDynamicScheduleUpdateRequest (chargingProfileId = unknown chargingProfileId)
+    CSMS-->>CS: PullDynamicScheduleUpdateResponse
+    Note over CSMS: Validation: status must be Rejected
+
+    CS->>CSMS: PullDynamicScheduleUpdateRequest (chargingProfileId = SetChargingProfileRequest.chargingProfile.id from step 1)
+    CSMS-->>CS: PullDynamicScheduleUpdateResponse
+    Note over CSMS: Validation: status must be Accepted<br>scheduleUpdate must be not omitted<br>scheduleUpdate must at least have a single field set

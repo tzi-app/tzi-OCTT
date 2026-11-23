@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Step 1: The Test System notifies the CSMS about the current state of the connector
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Occupied, evseId = <Configured evseId>, connectorId = <Configured connectorId>)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Occupied", component.name = "Connector", component.evse.id = <Configured evseId>, component.evse.connectorid = <Configured connectorId>, variable.name = "AvailabilityState")
+
+    Note over CS,CSMS: Step 2: The CSMS responds accordingly
+    CSMS-->>CS: StatusNotificationResponse
+    CSMS-->>CS: NotifyEventResponse
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = StatusNotification, evse.id = <Configured evseId>)
+    Note over CSMS: Validation (listed under Step 1 in the header, checks TriggerMessageRequest):<br>requestedMessage must be StatusNotification<br>evse.id must be <Configured evseId>
+
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    Note over CS,CSMS: Step 5: The Test System notifies the CSMS about the current state of the connector
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Occupied, evseId = <Configured evseId>, connectorId = <Configured connectorId>)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Occupied", component.name = "Connector", component.evse.id = <Configured evseId>, component.evse.connectorid = <Configured connectorId>, variable.name = "AvailabilityState")
+
+    Note over CS,CSMS: Step 6: The CSMS responds accordingly
+    CSMS-->>CS: StatusNotificationResponse
+    CSMS-->>CS: NotifyEventResponse

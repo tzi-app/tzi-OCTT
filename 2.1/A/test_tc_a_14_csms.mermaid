@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 3
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CSMS->>CS: TriggerMessageRequest (requestedMessage = SignChargingStationCertificate)
+    Note over CSMS: Validation: requestedMessage must be SignChargingStationCertificate
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    CS->>CSMS: SignCertificateRequest (csr = <Configured CSR>, certificateType = ChargingStationCertificate)
+    CSMS-->>CS: SignCertificateResponse (status = Accepted)
+    Note over CSMS: Validation: status must be Accepted
+
+    CSMS->>CS: CertificateSignedRequest
+    CS-->>CSMS: CertificateSignedResponse (status = Rejected)
+
+    CS->>CSMS: SecurityEventNotificationRequest (type = InvalidChargingStationCertificate)
+    CSMS-->>CS: SecurityEventNotificationResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

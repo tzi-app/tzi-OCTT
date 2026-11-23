@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CS->>CSMS: StatusNotificationRequest (customData = <customData>)
+    CSMS-->>CS: StatusNotificationResponse
+
+    CS->>CSMS: TransactionEventRequest (customData = customData, transactionInfo.customData = <customData>)
+    CSMS-->>CS: TransactionEventResponse

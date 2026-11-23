@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports setting energy limits
+    Note over CS,CSMS: Prerequisite: Test System has TxCtrlr.SupportedLimits containing maxTime
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EVConnectedPreSession
+    Note over CS,CSMS: Manual Action: In CSMS, configure time limit of duration <Configured time limit> for this transaction
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, triggerReason = ChargingStateChanged)
+    Note right of CS: idToken.idToken = <Configured valid_idtoken_idtoken><br>idToken.type = <Configured valid_idtoken_type><br>evse.id = <Configured evseId><br>evse.connectorId = <Configured connectorId><br>transactionInfo.transactionId = <transactionId><br>transactionInfo.chargingState = Charging<br>transactionInfo.transactionLimit omitted
+    CSMS-->>CS: TransactionEventResponse (idTokenInfo.status = Accepted, transactionLimit.maxTime = <Configured time limit>)
+    Note over CSMS: Validation: idTokenInfo.status must be Accepted<br>transactionLimit.maxEnergy must be omitted<br>transactionLimit.maxTime must be <Configured time limit><br>transactionLimit.maxCost must be omitted
+
+    CS->>CSMS: TransactionEventRequest (eventType = Updated, triggerReason = LimitSet)
+    Note right of CS: evse.id = <Configured evseId><br>evse.connectorId = <Configured connectorId><br>transactionInfo.transactionId = <transactionId><br>transactionInfo.transactionLimit.maxEnergy omitted<br>transactionInfo.transactionLimit.maxTime = <Configured time limit><br>transactionInfo.transactionLimit.maxCost omitted
+    CSMS-->>CS: TransactionEventResponse (transactionLimit omitted)
+    Note over CSMS: Validation: transactionLimit must be omitted
+
+    Note over CS,CSMS: Post scenario validations: N/a

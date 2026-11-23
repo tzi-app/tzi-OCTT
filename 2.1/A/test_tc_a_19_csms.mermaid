@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: Security profile must be set to 1 or 2.<br>If Security profile is set to 1, then a trusted certificate must be installed.
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: If configured Security profile is 2, then RenewChargingStationCertificate.<br>The Test System uses this certificate during the TLS handshake when connecting with security profile 3.
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a new NetworkConnectionProfile<br>with a security profile level one higher than currently configured
+
+    CSMS->>CS: SetNetworkProfileRequest (connectionData.securityProfile = Configured securityProfile + 1)
+    Note over CSMS: Validation: connectionData.messageTimeout = Configured messageTimeout<br>connectionData.ocppInterface = Configured ocppInterface<br>connectionData.ocppTransport = JSON<br>connectionData.ocppVersion = OCPP20<br>connectionData.securityProfile = Configured securityProfile + 1
+    CS-->>CSMS: SetNetworkProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the NetworkConfigurationPriority to one that<br>contains the configurationSlot of the new NetworkConnectionProfile from step 1
+
+    CSMS->>CS: SetVariablesRequest (NetworkConfigurationPriority)
+    Note over CSMS: Validation: setVariableData:<br>variable.name = "NetworkConfigurationPriority"<br>component.name = "OCPPCommCtrlr"<br>attributeValue contains configurationSlot provided at step 1
+    CS-->>CSMS: SetVariablesResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reboot the Charging Station
+
+    CSMS->>CS: ResetRequest
+    CS-->>CSMS: ResetResponse (status = Accepted)
+
+    CS->>CSMS: Reconnect using the new NetworkProfile (security profile = Configured securityProfile + 1)
+    CSMS-->>CS: Connection attempt accepted
+
+    Note over CS,CSMS: Execute Reusable State Booted
+
+    CS->>CSMS: Reconnect using the original NetworkProfile (lower security profile)
+    Note over CS,CSMS: This is done to ensure that the CSMS does not accept<br>a connection using the lower security profile anymore.
+    CSMS-->>CS: Connection attempt not accepted
+    Note over CSMS: Validation: The CSMS shall not accept the connection attempt.<br>Upgraded from security profile 2 to 3, incoming attempt with profile 2:<br>- Same endpoint, CSMS does a full switch and only allows TLS handshakes with a client certificate: TLS handshake is rejected.<br>- Same endpoint, CSMS only requires this Charging Station to use a client certificate:<br>TLS handshake accepted, HTTP request to establish the WebSocket connection rejected.<br>- Different port or whole different endpoint used for the upgrade: on the original endpoint<br>TLS handshake accepted, HTTP request to establish the WebSocket connection rejected.<br>Security profile 1: the CSMS shall always reject the HTTP request to establish<br>the WebSocket connection, because TLS is required for this Charging Station.
+
+    CS->>CSMS: Reconnect using the new NetworkProfile (security profile = Configured securityProfile + 1)
+    Note over CS,CSMS: This is done to restore the connection before ending the testcase.
+    CSMS-->>CS: Connection attempt accepted
+
+    Note over CS,CSMS: Post scenario validation: The Test System and the CSMS are connected.

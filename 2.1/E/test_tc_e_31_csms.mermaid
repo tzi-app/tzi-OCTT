@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State EnergyTransferStarted
+
+    CS->>CSMS: Close WebSocket connection
+    Note over CS: Wait <Configured Transaction duration> seconds
+    CS->>CSMS: Reconnect to the CSMS
+
+    CS->>CSMS: StatusNotificationRequest (evseId = <Configured evseId>, connectorId = <Configured connectorId>, connectorStatus = Available)
+    CSMS-->>CS: StatusNotificationResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, offline = true, triggerReason = EVCommunicationLost, transactionInfo.chargingState = Idle, seqNo = <Skips two sequence number values>)
+    CSMS-->>CS: TransactionEventResponse
+
+    CSMS->>CS: GetTransactionStatusRequest
+    Note over CSMS: Validation (listed in header under Step 5): GetTransactionStatusRequest<br>transactionId = <Generated transactionId from Before>
+    CS-->>CSMS: GetTransactionStatusResponse (ongoingIndicator = false, messagesInQueue = true)
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = StopAuthorized, eventType = Updated, offline = true, seqNo = <First of the two skipped values>)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = ChargingStateChanged, transactionInfo.chargingState = EVConnected, eventType = Updated, offline = true, seqNo = <Second of the two skipped values>)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

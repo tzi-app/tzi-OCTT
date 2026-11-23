@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a<br>Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    CSMS->>CS: SetChargingProfileRequest (evseId = <Configured evseId>, stackLevel = <Configured stackLevel>, chargingProfilePurpose = TxDefaultProfile, chargingProfileKind = Absolute)
+    Note right of CS: chargingProfile.chargingSchedule:<br>startSchedule <Not omitted><br>chargingRateUnit <Configured ChargingRateUnit><br>duration <Configured duration><br>chargingSchedulePeriod.startPeriod 0<br>chargingSchedulePeriod.limit 6.0 or 6000.0<br>chargingSchedulePeriod.numberPhases <Configured numberPhases> where <Configured numberPhases> not 3<br>OR numberPhases <Configured numberPhases> or <omit> where <Configured numberPhases> 3
+    Note over CSMS: Validation: Message SetChargingProfileRequest<br>evseId <Configured evseId> AND<br>chargingProfile.stackLevel <Configured stackLevel> AND<br>chargingProfile.chargingProfilePurpose TxDefaultProfile AND<br>chargingProfile.chargingProfileKind Absolute AND<br>chargingProfile.chargingSchedule.startSchedule <Not omitted> AND<br>chargingProfile.chargingSchedule.chargingRateUnit <Configured ChargingRateUnit> AND<br>chargingProfile.chargingSchedule.chargingSchedulePeriod.startPeriod 0 AND<br>chargingProfile.chargingSchedule.duration <Configured duration><br>chargingProfile.chargingSchedule.chargingSchedulePeriod.limit 6.0 or 6000.0 AND<br>chargingProfile.chargingSchedule.chargingSchedulePeriod.numberPhases <Configured numberPhases>
+
+    CS-->>CSMS: RPC Framework: CALLERROR: NotSupported
+
+    Note over CS,CSMS: Post scenario validations: N/a

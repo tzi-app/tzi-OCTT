@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports ISO15118-20
+    Note over CS,CSMS: Configuration State: CSMS is configured to start transactions first<br>in a non-V2X mode before upgrading to V2X
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State: ISO15118-20 transaction just started<br>exposing: <allowedEnergyTransferModes>, <transactionId>
+
+    Note over CS,CSMS: Agree on energy transfer mode
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = <Configured evseId>,<br>chargingNeeds.requestedEnergyTransfer = non-bidirectional mode from <allowedEnergyTransferModes>,<br>chargingNeeds.controlMode = ScheduledControl)
+    Note right of CS: requestedEnergyTransfer: one of the non-bidirectional modes in <allowedEnergyTransferModes><br>received in AuthorizeResponse, or if omitted AC_three_phase<br>chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_two_phase, AC_three_phase, AC_BPT, AC_BPT_DER, AC_DER]<br>chargingNeeds.v2xChargingParameters.maxChargePower = 1234W<br>chargingNeeds.v2xChargingParameters.maxDischargePower = 1234W
+    CSMS-->>CS: NotifyEVChargingNeedsResponse
+    Note over CSMS: Validation: status must be Accepted or Processing
+
+    Note over CS,CSMS: Setting charging profile
+    CSMS->>CS: SetChargingProfileRequest
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfile.transactionId must be <transactionId><br>For chargingProfile.chargingSchedule[*].chargingSchedulePeriod[*]:<br>operationMode must be ChargingOnly or <omitted><br>dischargeLimit, dischargeLimit_L2, dischargeLimit_L3 must be <omitted> or <empty><br>setpoint, setpoint_L2, setpoint_L3 must be <omitted> or <empty><br>setPointReactive, setPointReactive_L2, setPointReactive_L3 must be <omitted> or <empty>
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to allow V2X after initial start
+
+    CSMS->>CS: NotifyAllowedEnergyTransferRequest
+    Note over CSMS: Validation: transactionId must be <transactionId><br>allowedEnergyTransfer must contain one of [DC_BPT, AC_BPT, AC_BPT_DER]
+    CS-->>CSMS: NotifyAllowedEnergyTransferResponse
+
+    Note over CS,CSMS: Post scenario validations: N/a

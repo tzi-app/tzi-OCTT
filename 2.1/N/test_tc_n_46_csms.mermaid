@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Memory State: A local authorization list with <Configured valid_idtoken_idtoken> is configured
+
+    Note over CS,CSMS: Manual Action: Trigger CSMS to CustomerInformationRequest to both report and clear token<br><Configured valid_idtoken_idtoken> and <Configured valid_idtoken_type>
+
+    CSMS->>CS: CustomerInformationRequest (report = true, clear = true, idToken)
+    Note over CSMS: Validation: report true AND clear true AND<br>idToken.idToken <Configured valid_idtoken_idtoken><br>idToken.type <Configured valid_idtoken_type>
+    CS-->>CSMS: CustomerInformationResponse (status = Accepted)
+
+    CS->>CSMS: NotifyCustomerInformationRequest
+    CSMS-->>CS: NotifyCustomerInformationResponse
+
+    Note over CS,CSMS: Manual Action: If not triggered automatically, trigger CSMS to send SendLocalListRequest<br>with version = <configured local list version> + 1<br>and updateType = Differential<br>and localAuthorizationList = [{idToken = {<Configured_valid_idtoken>, <Configured valid_idtoken_type>}}]
+
+    CSMS->>CS: SendLocalListRequest (updateType = Differential, versionNumber = <configured local list version> + 1)
+    Note over CSMS: Validation: updateType Differential<br>versionNumber <configured local list version> + 1<br>localAuthorizationList[0].idToken contains <configured_valid_idtoken_idtoken> and <configured valid_idtoken_type><br>localAuthorizationList[0].idTokenInfo <omitted>
+    CS-->>CSMS: SendLocalListResponse (status = Accepted)
+
+    Note over CS,CSMS: Post scenario validation: All messages have been received

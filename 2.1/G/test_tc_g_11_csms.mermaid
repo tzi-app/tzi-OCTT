@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: State is EnergyTransferStarted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the availability to inoperative
+
+    CSMS->>CS: ChangeAvailabilityRequest (operationalStatus = Inoperative, evse.id = <Configured evseId>)
+    Note over CSMS: Validation: ChangeAvailabilityRequest<br>- operationalStatus Inoperative<br>- evse.id <Configured evseId><br>- connectorId omit
+    CS-->>CSMS: ChangeAvailabilityResponse (status = Scheduled)
+
+    Note over CS,CSMS: Wait for <Configured Transaction Duration>
+
+    Note over CS,CSMS: Execute Reusable State StopAuthorized
+    Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    Note over CS,CSMS: Execute Reusable State EVDisconnected
+
+    loop For all connectors
+        alt StatusNotification
+            CS->>CSMS: StatusNotificationRequest (connectorStatus = Unavailable, evseId = <Configured evseId>)
+            CSMS-->>CS: StatusNotificationResponse
+        else NotifyEvent
+            CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Unavailable", component.name = "Connector", component.evse.id = <Configured evseId>, variable.name = "AvailabilityState")
+            CSMS-->>CS: NotifyEventResponse
+        end
+    end
+
+    Note over CSMS: Post scenario validation: A respond to report the state of a connector<br>has been received for all connectors.

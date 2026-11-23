@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisites:<br>- The CSMS supports local cost calculation by CS<br>- CS has TariffCtrlr.Enabled[Tariff] = true<br>- CS has TariffCtrlr.MaxElements[Tariff] > 0<br>- CS has TariffCtrlr.ConditionsSupported[Tariff] = true
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a<br>Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to set a default tariff on EVSE 0 with<br>- validFrom<br>- Price for energy in peak hours<br>- Price for energy other hours
+
+    CSMS->>CS: SetDefaultTariffRequest (evseId = 0, tariff)
+    Note over CSMS: Validation: evseId 0<br>tariff.validFrom must be not omitted<br>tariff.energy.prices[0].priceKwh must be not omitted<br>tariff.energy.prices[0].conditions.startTimeOfDay must be in RFC 3339 format time-hour ":" time-minute<br>tariff.energy.prices[0].conditions.endTimeOfDay must be in RFC 3339 format time-hour ":" time-minute<br>tariff.energy.prices[1].priceKwh must be not omitted<br>tariff.energy.prices[1].conditions.startTimeOfDay must be in RFC 3339 format time-hour ":" time-minute<br>tariff.energy.prices[1].conditions.endTimeOfDay must be in RFC 3339 format time-hour ":" time-minute
+
+    CS-->>CSMS: SetDefaultTariffResponse (status = ConditionsNotSupported)
+
+    Note over CS,CSMS: Post scenario validations: N/a

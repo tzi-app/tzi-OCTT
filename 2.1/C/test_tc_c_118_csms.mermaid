@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports settlement at the end of a transaction<br>CSMS supports Charging Stations with integrated payment terminals<br>Test System has PaymentCtrlr.Enabled = true<br>Test System has PaymentCtrlr.AuthorizeDirectPayment = false<br>Test System has PaymentCtrlr.AuthorizationAmount = 50.00<br>Test System has PaymentCtrlr.PaymentDetails = "CardLast4Digits"<br>Test System has PaymentCtrlr.SettlementByCSMS = false<br>Test System has PaymentCtrlr.ReceiptByCSMS = true<br>CSMS lets the CS handle the settlement at the end of a transaction, but the CSMS provides receipts
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    CS->>CSMS: TransactionEventRequest (eventType = Started, idToken = <configured PspRef>, idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>, idToken.additionalInfo[0].additionalIdToken = <not omitted>, idToken.additionalInfo[0].type = CardLast4Digits, transactionInfo.transactionLimit.maxCost = 50.00)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = StopAuthorized, idToken = <configured PspRef>, idToken.type = DirectPayment, transactionInfo.transactionId = <transactionId>, transactionInfo.stoppedReason = Local, costDetails.totalCost.currency = EUR, costDetails.totalCost.fixed.exclTax = 15.00, costDetails.totalCost.fixed.inclTax = 18.15 EUR, costDetails.totalCost.fixed.taxRate.type = MyTax, costDetails.totalCost.fixed.taxRate.tax = 21, costDetails.totalUsage.energy = 123, costDetails.totalUsage.chargingTime = 5, costDetails.totalUsage.idleTime = 0, costDetails.chargingPeriods = <omitted>)
+    CSMS-->>CS: TransactionEventResponse
+
+    CS->>CSMS: NotifySettlementRequest (transactionId = <transactionId>, pspRef = <configured PspRef>, status = Settled, settlementTime = <not omitted>, settlementAmount = 18.15, receiptUrl = <omitted>)
+    CSMS-->>CS: NotifySettlementResponse (receiptUrl = <not omitted>)
+    Note over CSMS: Validation: NotifySettlementResponse<br>receiptUrl must be <not omitted>
+
+    Note over CS,CSMS: Post scenario validation: Verify that the receipt URL provided by the CSMS is valid and accessible

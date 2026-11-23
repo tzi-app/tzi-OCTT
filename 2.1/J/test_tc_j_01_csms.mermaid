@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    loop Every Configured clock-aligned Meter Values interval, for evseId=0 and all configured EVSE, until three Meter Value messages have been sent
+        CS->>CSMS: MeterValuesRequest (timestamp, sampledValue.context = Sample.Clock)
+        Note right of CS: timestamp: the intervals between the timestamps of the Meter Value messages<br>equal the Configured clock-aligned Meter Values interval
+        CSMS-->>CS: MeterValuesResponse
+        CS->>CSMS: NotifyEventRequest (timestamp, trigger = Periodic, component.name = FiscalMetering)
+        Note right of CS: timestamp: the intervals between the timestamps of the Meter Value messages<br>equal the Configured clock-aligned Meter Values interval
+        CSMS-->>CS: NotifyEventResponse
+    end
+
+    Note over CS,CSMS: The Test System ends the testcase after it has sent three Meter Value messages
+    Note over CSMS: Tool validations: N/a
+    Note over CS,CSMS: Post scenario validations: N/a

@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports retrieving / deleting CustomerInformation - CustomerIdentifier
+
+    CSMS->>CS: CustomerInformationRequest (report = true, clear = true, customerIdentifier = "OpenChargeAlliance")
+    Note over CSMS: Validation: report true<br>clear true<br>customerIdentifier "OpenChargeAlliance"<br>idToken is omitted<br>customerCertificate is omitted
+    CS-->>CSMS: CustomerInformationResponse (status = Accepted)
+    CS->>CSMS: NotifyCustomerInformationRequest
+    CSMS-->>CS: NotifyCustomerInformationResponse

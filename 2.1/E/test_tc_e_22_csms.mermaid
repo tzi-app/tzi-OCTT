@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Execute Reusable State: EnergyTransferStarted
+
+    CS->>CSMS: TransactionEventRequest (triggerReason = ChargingStateChanged, transactionInfo.chargingState = SuspendedEV, transactionInfo.stoppedReason = StoppedByEV, eventType = Ended)
+    CSMS-->>CS: TransactionEventResponse

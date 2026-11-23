@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports periodic event streams
+    Note over CS,CSMS: Configuration State: CSMS must be configured to accept opening the periodic event stream
+    Note over CS,CSMS: Memory State: N/a<br>Reusable State: N/a
+
+    CS->>CSMS: OpenPeriodicEventStreamRequest (constantStreamData.id = 2, constantStreamData.variableMonitoringId = 3, constantStreamData.params.interval = 10, constantStreamData.params.values = 30)
+    CSMS-->>CS: OpenPeriodicEventStreamResponse
+    Note over CSMS: Validation: status must be Accepted
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to reconfigure the periodic event stream to an interval of 15s and values 45
+
+    CSMS->>CS: AdjustPeriodicEventStreamRequest
+    Note over CSMS: Validation: id must be 2<br>params.interval must be 15<br>params.values must be 45
+    CS-->>CSMS: AdjustPeriodicEventStreamResponse (status = Accepted)
+
+    CS->>CSMS: NotifyPeriodicEventStream (using RFC framework SEND)
+
+    CS->>CSMS: ClosePeriodicEventStreamRequest (constantStreamData.id = 2)
+    CSMS-->>CS: OpenPeriodicEventStreamResponse
+
+    Note over CS,CSMS: Note: The Test System waits 10 seconds, before ending the testcase
+    Note over CSMS: Post scenario validation: CSMS does not respond with any message<br>when receiving message NotifyPeriodicEventStream of step 5

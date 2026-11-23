@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration State: Configure (using getVariablesRequest) Component.Variable.Instance<br>DeviceDataCtrlr.ItemsPerMessage.GetVariables at value 4
+
+    Note over CS,CSMS: Manual Action: Request CSMS for 5 variables:<br>DeviceDataCtrlr.ItemsPerMessage[GetReport]<br>DeviceDataCtrlr.ItemsPerMessage[GetVariables]<br>DeviceDataCtrlr.BytesPerMessage[GetReport]<br>DeviceDataCtrlr.BytesPerMessage[GetVariables]<br>AuthCtrlr.AuthorizeRemoteStart
+
+    Note over CS,CSMS: The two GetVariablesRequest messages may arrive in arbitrary order
+
+    CSMS->>CS: GetVariablesRequest (4 variables)
+    CS-->>CSMS: GetVariablesResponse (list of 4 GetVariableResultType items)
+    CSMS->>CS: GetVariablesRequest (1 variable)
+    CS-->>CSMS: GetVariablesResponse (1 GetVariableResultType item)
+
+    Note over CSMS: Validation: GetVariablesRequest for 4 variables and GetVariablesRequest for 1 variable (in arbitrary order)<br>for component.name = "DeviceDataCtrlr":<br>- variable.name = "ItemsPerMessage" with variable.instance = "GetReport"<br>- variable.name = "ItemsPerMessage" with variable.instance = "GetVariables"<br>- variable.name = "BytesPerMessage" with variable.instance = "GetReport"<br>- variable.name = "BytesPerMessage" with variable.instance = "GetVariables"<br>and for component.name = "AuthCtrlr":<br>- variable.name = "AuthorizeRemoteStart"
+
+    Note over CS,CSMS: Post scenario validation: Test System validates that not more than ItemsPerMessageGetVariables<br>elements are requested in one GetVariablesRequest message by CSMS

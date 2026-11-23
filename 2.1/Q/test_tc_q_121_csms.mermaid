@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: CSMS supports Bidirectional Power Transfer<br>CSMS has Frequency support
+    Note over CS,CSMS: Configuration State: N/a<br>Memory State: N/a
+    Note over CS,CSMS: Execute Reusable State ISO15118-20 transaction just started<br>exposing: <allowedEnergyTransferModes>, <transactionId>
+
+    Note over CS,CSMS: Agree on energy transfer mode
+    CS->>CSMS: NotifyEVChargingNeedsRequest (evseId = <Configured evseId>, requestedEnergyTransfer = AC_BPT, controlMode = DynamicControl)
+    Note right of CS: chargingNeeds.availableEnergyTransfer = [AC_single_phase, AC_two_phase, AC_three_phase, AC_BPT, AC_BPT_DER, AC_DER]<br>chargingNeeds.v2xChargingParameters.maxChargePower = 1234W<br>chargingNeeds.v2xChargingParameters.maxDischargePower = 4321W
+    CSMS-->>CS: NotifyEVChargingNeedsResponse
+    Note over CSMS: Validation: status must be Accepted or Processing
+    CSMS->>CS: SetChargingProfileRequest
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a LocalFrequency charging profile to the CS<br>evseId <Configured evseId><br>chargingProfile.transactionId <transactionId><br>chargingProfile.chargingProfilePurpose TxProfile<br>chargingSchedule.chargingRateUnit W<br>chargingSchedulePeriod.operationMode must be LocalFrequency<br>v2xFreqWattCurve[0]: frequency 49.5, power -1000<br>v2xFreqWattCurve[1]: frequency 50.0, power 0<br>v2xFreqWattCurve[2]: frequency 50.5, power 1000<br>chargingSchedulePeriod.v2xBaseline 7000
+
+    CSMS->>CS: SetChargingProfileRequest (operationMode = LocalFrequency)
+    Note over CSMS: Validation: evseId must be <Configured evseId><br>chargingProfile.transactionId must be <transactionId><br>chargingProfile.chargingProfilePurpose must be TxProfile<br>chargingSchedule.chargingRateUnit must be W<br>chargingSchedulePeriod.operationMode must be LocalFrequency<br>chargingSchedulePeriod limit, limit_L2, limit_L3 must be <omitted><br>dischargeLimit, dischargeLimit_L2, dischargeLimit_L3 must be <omitted><br>setpoint, setpoint_L2, setpoint_L3 must be <omitted><br>setpointReactive, setpointReactive_L2, setpointReactive_L3 must be <omitted><br>v2xFreqWattCurve[0].frequency and .power must be <not omitted><br>v2xFreqWattCurve[1].frequency and .power must be <not omitted><br>v2xFreqWattCurve[2].frequency and .power must be <not omitted><br>v2xBaseline must be <not omitted>
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)

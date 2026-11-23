@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: TriggerMessageRequest
+    Note over CSMS: Validation: requestedMessage must be MeterValues
+    CS-->>CSMS: TriggerMessageResponse (status = Accepted)
+
+    loop For every EVSE
+        CS->>CSMS: MeterValuesRequest (evseId omitted, meterValue[0].sampledValue.context = Trigger)
+        CSMS-->>CS: MeterValuesResponse
+    end

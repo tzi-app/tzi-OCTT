@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+
+    opt State is NOT EVConnectedPostSession
+        Note over CS,CSMS: Execute Reusable State EVConnectedPostSession
+    end
+
+    Note over CS,CSMS: Step 1: Test System notifies the CSMS about the status change of the connector
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Available, component.name = Connector, variable.name = AvailabilityState)
+    CSMS-->>CS: StatusNotificationResponse / NotifyEventResponse (CSMS responds accordingly)
+
+    CS->>CSMS: TransactionEventRequest (eventType = Ended, triggerReason = EVCommunicationLost, transactionInfo.chargingState = Idle, transactionInfo.stoppedReason = EVDisconnected)
+    CSMS-->>CS: TransactionEventResponse
+
+    Note over CS,CSMS: Post condition: State is EVDisconnected

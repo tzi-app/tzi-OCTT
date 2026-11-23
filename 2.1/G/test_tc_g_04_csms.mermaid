@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): n/a<br>Configuration State: n/a<br>Reusable State(s): n/a
+    Note over CS,CSMS: Memory State: Unavailable for configured evseId
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to change the availability of an EVSE to Operative
+
+    CSMS->>CS: ChangeAvailabilityRequest (operationalStatus = Operative, evse.id = configured evseId)
+    Note over CSMS: Validation (Step 1): operationalStatus Operative<br>evse.id = configured evseId<br>connectorId omitted
+
+    CS-->>CSMS: ChangeAvailabilityResponse (status = Accepted)
+
+    Note over CS,CSMS: Step 3: Test System notifies the current state of all connectors<br>belonging to the specified EVSE (and optionally also the EVSE itself)
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available, evseId = configured evseId)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = Available, component.name = EVSE / Connector, component.evse.id = configured evseId, variable.name = AvailabilityState)
+
+    CSMS-->>CS: CSMS responds accordingly
+
+    Note over CS,CSMS: Post scenario validations: n/a

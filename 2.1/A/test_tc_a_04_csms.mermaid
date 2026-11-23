@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite: The CSMS supports security profile 2 and/or 3
+
+    CS->>CSMS: Terminate connection, initiate TLS handshake, Client Hello
+    CSMS-->>CS: Server Hello (with Configured server certificate)
+
+    CS->>CSMS: Send client certificate, Client Key Exchange, Certificate verify, Change Cipher Spec, Finished
+    Note right of CS: The client certificate is only sent when the CSMS uses security profile 3
+    Note over CSMS: Validation (before finishing the TLS handshake):<br>- The CSMS must use TLS version 1.2 or above<br>- At least these cipher suites must be supported,<br>TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256<br>AND TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384<br>AND TLS_RSA_WITH_AES_128_GCM_SHA256<br>AND TLS_RSA_WITH_AES_256_GCM_SHA384<br>- RSA or DSA keys must be at least 2048 bits long,<br>elliptic curve keys must be at least 224 bits long<br>- The server side certificate must be transmitted in X.509 format encoded in PEM format<br>- The certificate must include a serial number<br>- The certificate subject must contain a commonName RDN<br>which consists of the FQDN of the endpoint of the server<br>If a validation fails, the Test System can still proceed with the next steps (if it is able to),<br>but the testcase will FAIL and the Test System reports why it failed
+
+    CSMS-->>CS: Change Cipher Spec, Finished
+
+    CS->>CSMS: HTTP upgrade request
+    Note right of CS: The HTTP request only contains a username/password combination<br>when the CSMS uses security profile 2
+    CSMS-->>CS: Upgrade connection to a (secured) WebSocket connection
+
+    CS->>CSMS: BootNotificationRequest (reason = PowerUp, chargingStation.model = Configured model, chargingStation.vendorName = Configured vendorName)
+    CSMS-->>CS: BootNotificationResponse
+    Note over CSMS: Validation: BootNotificationResponse with status Accepted
+
+    Note over CS,CSMS: The Test System notifies the CSMS about the current state of all connectors
+    CS->>CSMS: StatusNotificationRequest (connectorStatus = Available)
+    CS->>CSMS: NotifyEventRequest (trigger = Delta, actualValue = "Available", component.name = "Connector", variable.name = "AvailabilityState")
+    CSMS-->>CS: CSMS responds accordingly

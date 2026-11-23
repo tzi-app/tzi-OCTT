@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    CSMS->>CS: UpdateFirmwareRequest
+    CS-->>CSMS: UpdateFirmwareResponse (status = Accepted)
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloading)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = Downloaded)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: FirmwareStatusNotificationRequest (status = InvalidSignature)
+    CSMS-->>CS: FirmwareStatusNotificationResponse
+
+    CS->>CSMS: SecurityEventNotificationRequest (type = InvalidFirmwareSignature)
+    CSMS-->>CS: SecurityEventNotificationResponse

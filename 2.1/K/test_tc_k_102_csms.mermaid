@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State: N/a
+
+    Note over CS,CSMS: Manual Action: Request the CSMS to send a TxDefaultProfile<br>charging profile with limitAtSoc specified
+
+    CSMS->>CS: SetChargingProfileRequest (chargingProfile.chargingProfilePurpose = TxDefaultProfile, chargingProfile.chargingSchedule.limitAtSoC)
+    Note over CSMS: Validation: chargingProfile.chargingProfilePurpose must be TxDefaultProfile<br>chargingProfile.chargingSchedule.limitAtSoC must be not omitted
+
+    CS-->>CSMS: SetChargingProfileResponse (status = Accepted)

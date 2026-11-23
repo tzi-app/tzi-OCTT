@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request CSMS to get data for OCPPCommCtrlr.OfflineThreshold
+    CSMS->>CS: GetVariablesRequest (component.name = OCPPCommCtrlr, variable.name = OfflineThreshold)
+    Note over CSMS: Validation: GetVariablesRequest with (in arbitrary order) getVariableData[0]:<br>- attributeType is at least absent or attributeType = Actual, but Target, MinSet and MaxSet are also allowed<br>- variable.name = "OfflineThreshold"<br>- component.name = "OCPPCommCtrlr"
+
+    CS-->>CSMS: GetVariablesResponse
+
+    Note over CS,CSMS: Post scenario validation: Manually validate that CSMS has correctly read the requested variables

@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant CS as Charging Station (Test System)
+    participant CSMS as CSMS (System under Test)
+
+    Note over CS,CSMS: Prerequisite(s): N/a
+    Note over CS,CSMS: Configuration State: N/a
+    Note over CS,CSMS: Memory State: N/a
+    Note over CS,CSMS: Reusable State(s): N/a
+
+    Note over CS,CSMS: Manual Action: Request CSMS to set data for OCPPCommCtrlr.OfflineThreshold
+    CSMS->>CS: SetVariablesRequest (setVariableData[1]: component.name = OCPPCommCtrlr, variable.name = OfflineThreshold, attributeValue = 123)
+    Note over CSMS: Validation: SetVariablesRequest with (in arbitrary order) setVariableData[1]:<br>variable.name = "OfflineThreshold"<br>component.name = "OCPPCommCtrlr"<br>attributeValue = "123"<br>attributeType is absent or attributeType = Actual
+
+    CS-->>CSMS: SetVariablesResponse
+
+    Note over CS,CSMS: Post scenario validation: Manually validate that CSMS has correctly set the requested variables
