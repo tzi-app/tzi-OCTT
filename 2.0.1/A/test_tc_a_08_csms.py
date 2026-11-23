@@ -136,8 +136,9 @@ async def test_tc_a_08():
     cp = TziChargePoint(cp_id, ws)
     start_task = asyncio.create_task(cp.start())
 
-    # B01.FR.12: For SP3, serialNumber must match the client certificate CN
-    boot_response = await cp.send_boot_notification_with_serial(cp_id)
+    # Step 11: reason PowerUp with the configured model and vendorName. The scenario sends no
+    # serialNumber.
+    boot_response = await cp.send_boot_notification()
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)

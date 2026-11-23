@@ -108,7 +108,10 @@ async def test_tc_a_06(security_profile):
 
     uri = f'{CSMS_ADDRESS}/{cp_id}'
 
-    # Step 1-2: Attempt connection with TLS version lower than 1.2
+    # Step 1-2: TLS handshake with a TLS version lower than 1.2. The client has to be able to
+    # offer such a version. Python sets TLS 1.2 as the minimum version, and OpenSSL 3 disables
+    # TLS 1.0 and 1.1 above security level 0. Without the two settings below, the handshake
+    # fails in the client, before a Client Hello reaches the CSMS.
     low_tls_ctx = create_ssl_context(
         ca_cert=TLS_CA_CERT,
         client_cert=TLS_CLIENT_CERT if security_profile == 3 else None,
@@ -116,8 +119,10 @@ async def test_tc_a_06(security_profile):
         max_tls_version=ssl.TLSVersion.TLSv1_1,
         check_hostname=False,
     )
+    low_tls_ctx.minimum_version = ssl.TLSVersion.TLSv1
+    low_tls_ctx.set_ciphers('DEFAULT:@SECLEVEL=0')
 
-    with pytest.raises(ssl.SSLError):
+    with pytest.raises((ssl.SSLError, ConnectionError)) as terminated:
         await websockets.connect(
             uri=uri,
             subprotocols=['ocpp2.0.1'],
@@ -125,7 +130,11 @@ async def test_tc_a_06(security_profile):
             ssl=low_tls_ctx,
         )
 
-    logging.info("CSMS correctly rejected TLS < 1.2 connection")
+    # Check that the CSMS terminated the connection, and that the client did not give up before
+    # sending its Client Hello.
+    assert getattr(terminated.value, 'reason', None) != 'NO_PROTOCOLS_AVAILABLE', \
+        f"The client could not offer a TLS version lower than 1.2: {terminated.value}"
+    logging.info(f"CSMS terminated the TLS < 1.2 handshake: {terminated.value}")
 
     # Step 3-8: Connect with TLS 1.2+
     ssl_ctx = create_ssl_context(
@@ -147,12 +156,9 @@ async def test_tc_a_06(security_profile):
     cp = TziChargePoint(cp_id, ws)
     start_task = asyncio.create_task(cp.start())
 
-    # B01.FR.12: For SP3, serialNumber must match the client certificate CN
-    # (which equals the station external_id). Without it, CSMS closes the connection.
-    if security_profile == 3:
-        boot_response = await cp.send_boot_notification_with_serial(cp_id)
-    else:
-        boot_response = await cp.send_boot_notification()
+    # Step 9: reason PowerUp with the configured model and vendorName. The scenario sends no
+    # serialNumber.
+    boot_response = await cp.send_boot_notification()
     assert boot_response.status == RegistrationStatusEnumType.accepted
 
     await cp.send_status_notification(1, ConnectorStatusEnumType.available)

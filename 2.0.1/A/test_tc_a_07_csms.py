@@ -67,10 +67,12 @@ Post scenario validations:
 """
 
 import asyncio
+import contextlib
 import os
 import time
 import logging
 import ssl
+from urllib.parse import urlparse
 
 import pytest
 import websockets
@@ -98,6 +100,16 @@ REQUIRED_TLS12_CIPHERS = (
 
 
 async def assert_tls12_cipher_supported(uri):
+    """A00.FR.421: the CSMS completes a TLS 1.2 handshake with each required cipher suite.
+
+    Each suite gets a TLS handshake of its own, with the client certificate. The handshake is
+    closed without an HTTP upgrade. That makes it a check of the TLS layer, as in step 3, and
+    the CSMS does not see it as a connection of the station. A completed WebSocket connection
+    with the station's identity would replace the connection the scenario continues on,
+    because a station has one connection at a time.
+    """
+    endpoint = urlparse(uri)
+    host, port = endpoint.hostname, endpoint.port or 443
     for cipher in REQUIRED_TLS12_CIPHERS:
         ssl_ctx = create_ssl_context(
             ca_cert=TLS_CA_CERT,
@@ -109,14 +121,18 @@ async def assert_tls12_cipher_supported(uri):
         ssl_ctx.set_ciphers(cipher)
 
         try:
-            ws = await websockets.connect(
-                uri=uri,
-                subprotocols=['ocpp2.0.1'],
-                ssl=ssl_ctx,
-            )
-            await ws.close()
+            _, writer = await asyncio.open_connection(host, port, ssl=ssl_ctx, server_hostname=host)
         except Exception as exc:
             pytest.fail(f"Required TLS 1.2 cipher not supported: {cipher}, error={exc}")
+
+        try:
+            negotiated = writer.get_extra_info('ssl_object').cipher()[0]
+            assert negotiated == cipher, f"Expected TLS 1.2 cipher {cipher}, negotiated {negotiated}"
+            logging.info(f"TLS 1.2: cipher={negotiated}")
+        finally:
+            writer.close()
+            with contextlib.suppress(ConnectionError, ssl.SSLError):
+                await writer.wait_closed()
 
 
 @pytest.mark.asyncio
@@ -131,6 +147,13 @@ async def test_tc_a_07():
     )
 
     uri = f'{CSMS_ADDRESS}/{cp_id}'
+
+    # Step 3 validation, cipher suites (A00.FR.421). A handshake negotiates one suite, so
+    # each required TLS 1.2 suite gets a TLS handshake of its own: steps 1-4, after which the
+    # connection is terminated before any HTTP upgrade. These handshakes run before the
+    # connection that goes through steps 1-10.
+    await assert_tls12_cipher_supported(uri)
+
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
@@ -147,11 +170,8 @@ async def test_tc_a_07():
         f"TLS version must be 1.2 or above, got {tls_info['tls_version']}"
 
     cipher_name, cipher_protocol, cipher_bits = tls_info['cipher']
-    assert cipher_bits >= 128, \
-        f"Cipher must use at least 128-bit keys, got {cipher_bits}"
 
     logging.info(f"TLS: version={tls_info['tls_version']}, cipher={cipher_name}, bits={cipher_bits}")
-    await assert_tls12_cipher_supported(uri)
 
     # Step 7-10: Boot + Status + NotifyEvent
     cp = TziChargePoint(cp_id, ws)

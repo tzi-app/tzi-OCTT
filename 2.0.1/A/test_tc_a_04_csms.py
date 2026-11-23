@@ -97,6 +97,7 @@ NOTE: TC_A_04_CSMS mandates static RSA cipher suites
 """
 
 import asyncio
+import contextlib
 import os
 import time
 import logging
@@ -130,7 +131,44 @@ REQUIRED_TLS12_CIPHERS = (
 )
 
 
-async def assert_tls12_cipher_supported(uri, headers, security_profile):
+def validate_server_certificate(peer_cert, peer_cert_der, server_host):
+    """Step 3 checks on a certificate the CSMS served in a TLS handshake.
+
+    A00.FR.508 (serial number), A00.FR.510 (the CN is the FQDN of the endpoint), A00.FR.502
+    and A00.FR.503 (key size), A00.FR.507 (X.509, PEM). Returns (commonName, serialNumber,
+    key size).
+    """
+    assert peer_cert, "Peer certificate must be present"
+
+    subject = dict(x[0] for x in peer_cert.get('subject', ()))
+    assert 'commonName' in subject, "Certificate subject must contain commonName"
+    assert peer_cert.get('serialNumber'), "Certificate must include a serial number"
+    assert subject.get('commonName') == server_host, \
+        f"Certificate commonName must match endpoint FQDN ({server_host}), got {subject.get('commonName')}"
+
+    # Public key size: RSA/DSA >= 2048, ECC >= 224
+    key_size = validate_cert_key_size(peer_cert_der)
+
+    validate_cert_x509_pem(peer_cert_der)
+
+    return subject.get('commonName'), peer_cert.get('serialNumber'), key_size
+
+
+async def assert_tls12_cipher_supported(uri, security_profile):
+    """A00.FR.318: the CSMS completes a TLS 1.2 handshake with each required cipher suite.
+
+    Each suite gets a TLS handshake of its own, which is closed without an HTTP upgrade. That
+    makes it a check of the TLS layer, as in step 3, and the CSMS does not see it as a
+    connection of the station. A completed WebSocket connection with the station's identity
+    would replace the connection the scenario continues on, because a station has one
+    connection at a time.
+
+    The certificate served for each suite is validated like the one in step 3. The
+    ECDHE_ECDSA suites are served the CSMS's EC certificate, and the TLS_RSA suites its RSA
+    certificate (A00.FR.318 note).
+    """
+    endpoint = urlparse(uri)
+    host, port = endpoint.hostname, endpoint.port or 443
     for cipher in REQUIRED_TLS12_CIPHERS:
         ssl_ctx = create_ssl_context(
             ca_cert=TLS_CA_CERT,
@@ -142,15 +180,23 @@ async def assert_tls12_cipher_supported(uri, headers, security_profile):
         ssl_ctx.set_ciphers(cipher)
 
         try:
-            ws = await websockets.connect(
-                uri=uri,
-                subprotocols=['ocpp2.0.1'],
-                extra_headers=headers,
-                ssl=ssl_ctx,
-            )
-            await ws.close()
+            _, writer = await asyncio.open_connection(host, port, ssl=ssl_ctx, server_hostname=host)
         except Exception as exc:
             pytest.fail(f"Required TLS 1.2 cipher not supported: {cipher}, error={exc}")
+
+        try:
+            ssl_obj = writer.get_extra_info('ssl_object')
+            negotiated = ssl_obj.cipher()[0]
+            assert negotiated == cipher, f"Expected TLS 1.2 cipher {cipher}, negotiated {negotiated}"
+
+            common_name, serial, key_size = validate_server_certificate(
+                ssl_obj.getpeercert(), ssl_obj.getpeercert(binary_form=True), host)
+            logging.info(f"TLS 1.2: cipher={negotiated}, key_size={key_size}, "
+                         f"CN={common_name}, serial={serial}")
+        finally:
+            writer.close()
+            with contextlib.suppress(ConnectionError, ssl.SSLError):
+                await writer.wait_closed()
 
 
 @pytest.mark.asyncio
@@ -170,6 +216,14 @@ async def test_tc_a_04(security_profile):
         headers = {}
 
     uri = f'{CSMS_ADDRESS}/{cp_id}'
+    server_host = urlparse(uri).hostname
+
+    # Step 3 validation, cipher suites (A00.FR.318). A handshake negotiates one suite, so
+    # each required TLS 1.2 suite gets a TLS handshake of its own: steps 1-4 with the step 3
+    # validations, after which the connection is terminated before any HTTP upgrade. These
+    # handshakes run before the connection that goes through steps 1-10.
+    await assert_tls12_cipher_supported(uri=uri, security_profile=security_profile)
+
     ws = await websockets.connect(
         uri=uri,
         subprotocols=['ocpp2.0.1'],
@@ -187,34 +241,15 @@ async def test_tc_a_04(security_profile):
     assert tls_info['tls_version'] in ACCEPTABLE_TLS_VERSIONS, \
         f"TLS version must be 1.2 or above, got {tls_info['tls_version']}"
 
-    # Cipher must use at least 128-bit keys
     cipher_name, cipher_protocol, cipher_bits = tls_info['cipher']
-    assert cipher_bits >= 128, \
-        f"Cipher must use at least 128-bit keys, got {cipher_bits}"
 
-    # Peer certificate must have serialNumber and commonName
-    peer_cert = tls_info['peer_cert']
-    assert peer_cert is not None, "Peer certificate must be present"
-
-    subject = dict(x[0] for x in peer_cert.get('subject', ()))
-    assert 'commonName' in subject, "Certificate subject must contain commonName"
-    assert peer_cert.get('serialNumber'), "Certificate must include a serial number"
-    server_host = urlparse(uri).hostname
-    assert subject.get('commonName') == server_host, \
-        f"Certificate commonName must match endpoint FQDN ({server_host}), got {subject.get('commonName')}"
-
-    # Validate certificate public key size (RSA/DSA >= 2048, ECC >= 224)
-    peer_cert_der = tls_info['peer_cert_der']
-    key_size = validate_cert_key_size(peer_cert_der)
-
-    # Validate X.509 PEM format
-    validate_cert_x509_pem(peer_cert_der)
+    # Server certificate: serial number, commonName, key size, X.509 PEM
+    common_name, serial, key_size = validate_server_certificate(
+        tls_info['peer_cert'], tls_info['peer_cert_der'], server_host)
 
     logging.info(f"TLS: version={tls_info['tls_version']}, cipher={cipher_name}, "
-                 f"bits={cipher_bits}, key_size={key_size}, CN={subject.get('commonName')}, "
-                 f"serial={peer_cert.get('serialNumber')}")
-
-    await assert_tls12_cipher_supported(uri=uri, headers=headers, security_profile=security_profile)
+                 f"bits={cipher_bits}, key_size={key_size}, CN={common_name}, "
+                 f"serial={serial}")
 
     # Boot + Status + NotifyEvent
     cp = TziChargePoint(cp_id, ws)

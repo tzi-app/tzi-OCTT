@@ -46,7 +46,7 @@ import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ocpp.routing import on
+from ocpp.routing import on, after
 from ocpp.v201 import call, call_result
 from ocpp.v201.call import TransactionEvent
 from ocpp.v201.enums import (
@@ -95,8 +95,13 @@ class SmartChargingMockCP(TziChargePoint):
             'evse_id': evse_id, 'charging_profile': charging_profile,
         })
         self._set_charging_profile_count += 1
-        self._profile_received.set()
         return call_result.SetChargingProfile(status=ChargingProfileStatusEnumType.accepted)
+
+    @after(Action.set_charging_profile)
+    async def after_set_charging_profile(self, evse_id, charging_profile, **kwargs):
+        # Runs once the SetChargingProfileResponse has been sent (step 4). Only then may the
+        # test go on to step 5.
+        self._profile_received.set()
 
 
 async def _execute_iso15118_smart_charging(cp, transaction_id):

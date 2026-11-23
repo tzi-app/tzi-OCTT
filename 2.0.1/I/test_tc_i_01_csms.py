@@ -54,7 +54,7 @@ import websockets
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ocpp.v201.call import TransactionEvent
-from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType
+from ocpp.v201.datatypes import EventDataType, ComponentType, VariableType, EVSEType
 from ocpp.v201.enums import (
     RegistrationStatusEnumType,
     ConnectorStatusEnumType,
@@ -151,7 +151,8 @@ async def test_tc_i_01():
         EventDataType(
             trigger=EventTriggerType.delta,
             actual_value='Occupied',
-            component=ComponentType(name='Connector'),
+            # EVConnectedPreSession step 1 validates evse.id and connector.id of the event.
+            component=ComponentType(name='Connector', evse=EVSEType(id=EVSE_ID, connector_id=CONNECTOR_ID)),
             variable=VariableType(name='AvailabilityState'),
             timestamp=now_iso(),
             event_id=EVSE_ID,
