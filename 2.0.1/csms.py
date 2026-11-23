@@ -5,31 +5,32 @@ Note: This implementation is intended solely for testing, debugging, and steppin
       the tzi-octt test suite. It is NOT designed to be used in production.
       it was written entirely by Anthropic Claude and OpenAI Codex.
 
-Runs two servers:
-  - WS  on port 9000 (Security Profile 1: Basic Auth, no TLS)
-  - WSS on port 8082 (Security Profile 2: TLS + Basic Auth, Profile 3: mTLS)
+Runs three servers. All settings, ports included, come from config.json next to this file; no environment
+variables are read.
+  - WSS on CSMS_WSS_PORT (9000): TLS, with Basic Auth or a client certificate (mTLS). The tests connect here
+    (CSMS_ADDRESS in pytest.ini).
+  - WS  on CSMS_WS_PORT (8082): Basic Auth without TLS. The tests do not use it.
+  - Trigger API (HTTP) on CSMS_TRIGGER_PORT (5001 when not set): the endpoints the tests call to make the CSMS
+    send a request (CSMS_TRIGGER_ADDRESS in pytest.ini).
 
-Usage:
-  python csms.py [test_mode]
+Usage (OCPP 2.0.1 only):
+  python 2.0.1/csms.py [test_mode]      # from the repository root; works from any directory
 
-  Examples:
-    python csms.py                         # Auto-detect mode (handles all A tests)
-    python csms.py password_update         # TC_A_09, A_10
-    python csms.py clear_cache             # TC_C_37, C_38
-    python csms.py send_local_list_full    # TC_D_01
+  The ports are the test defaults in pytest.ini. The simulator is ready when it logs
+  "CSMS 2.0.1 simulator started."; then run the 2.0.1 tests as usual.
 
-Test mode configuration (three options, can be combined):
+Test modes (optional):
+  A test mode makes the simulator perform an action by itself when a station connects. The tests listed with
+  each mode below also pass without it, because they trigger the action through the trigger API.
 
-  1. CLI argument (first positional arg):
-       python csms.py <test_mode>
+  1. CLI argument (first positional arg), for every station:
+       python 2.0.1/csms.py password_update
 
-  2. Global mode via CSMS_TEST_MODE env var (applies to all CPs):
-       CSMS_TEST_MODE=password_update python csms.py
+  2. CSMS_TEST_MODE in config.json, for every station. The CLI argument takes precedence.
 
-  3. Per-CP mode via CSMS_CP_ACTIONS env var (JSON mapping, takes precedence):
-       CSMS_CP_ACTIONS='{"CP001": "password_update"}' python csms.py
-
-  Priority: Per-CP actions > CLI arg / env var.
+  3. CSMS_CP_ACTIONS in config.json, per station, e.g. {"CP201_SP1": "password_update"}.
+     When it is not empty it decides for every station: a station that is not in it gets no mode, and the
+     mode from 1 or 2 is ignored.
 
   When no test mode is set, the CSMS uses auto-detection:
     - Waits briefly after connection to see if CP sends BootNotification
@@ -61,7 +62,7 @@ Reactive handlers (always active, no test mode needed):
 
 Token database:
   Hardcoded token entries used by Authorize/TransactionEvent handlers.
-  Override group via VALID_TOKEN_GROUP / MASTERPASS_GROUP_ID env vars.
+  Their groups come from GROUP_ID and MASTERPASS_GROUP_ID in config.json.
 
 Actions fire only once per CP (except profile_upgrade which uses a state machine).
 """
@@ -5142,7 +5143,7 @@ async def main():
         logging.info(f"WSS server started on port {WSS_PORT}")
     else:
         logging.warning("TLS cert files not found - WSS server not started. "
-                        "Run: python generate_certs.py")
+                        "Run ./generate_certs.sh from the repository root.")
 
     # Start HTTP trigger API server
     trigger_server = await asyncio.start_server(

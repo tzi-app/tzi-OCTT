@@ -276,25 +276,55 @@ guide, step 6).
 
 ## CSMS Simulator
 
-[csms.py](2.0.1/csms.py) provides a minimal in-memory CSMS for validating the behavior of the tests themselves. You
-don't need it to test your own CSMS. It is not intended for production use.
+[csms.py](2.0.1/csms.py) is a minimal in-memory CSMS for checking the behavior of the tests themselves. You don't need
+it to test your own CSMS, and it is not intended for production use. It supports OCPP 2.0.1 only, so the 1.6J suite
+cannot run against it.
 
-It loads runtime configuration from `2.0.1/config.json` at startup:
+### Running it
 
-- Edit `2.0.1/config.json` to match your setup (ports, CP IDs, connector type, token values, TLS paths, etc.).
-- Running `python 2.0.1/csms.py <test_mode>` accepts an optional CLI test-mode override, which takes precedence over the `CSMS_TEST_MODE` value in `config.json`.
+Its ports are the test defaults in `pytest.ini`. Start it, with the virtual environment active:
 
-Key fields in `config.json`:
+```bash
+python 2.0.1/csms.py
+```
 
-- `CSMS_WS_PORT`, `CSMS_WSS_PORT`
-- `BASIC_AUTH_CP`, `BASIC_AUTH_CP_F`, `BASIC_AUTH_CP_PASSWORD`
+It is ready when it logs `CSMS 2.0.1 simulator started.` In another terminal, run the 2.0.1 tests as usual, for
+example:
+
+```bash
+pytest -v -p no:warnings ./2.0.1/B/test_tc_b_20_csms.py
+```
+
+| Server | Port in `config.json` | Used by the tests |
+|---|---|---|
+| WSS: TLS, with Basic Auth or a client certificate | `CSMS_WSS_PORT`: 9000 | Yes, as `CSMS_ADDRESS` (`wss://localhost:9000`) |
+| WS: Basic Auth without TLS | `CSMS_WS_PORT`: 8082 | No |
+| Trigger API (HTTP) | `CSMS_TRIGGER_PORT`: 5001 when not set | Yes, as `CSMS_TRIGGER_ADDRESS` (`http://localhost:5001`) |
+
+To run it next to another CSMS, give it other ports in `config.json` and point the tests at them, for example
+`CSMS_ADDRESS=wss://localhost:9100 CSMS_TRIGGER_ADDRESS=http://localhost:5101 pytest …`.
+
+- **Stations:** it accepts any station ID with the password `BASIC_AUTH_CP_PASSWORD` (`test1234`). The stations in
+  `CSMS_SP3_STATION_IDS` connect with a client certificate (security profile 3).
+- **Trigger API:** it has no `create-token` (only the 1.6J tests use it) and no `clear-variable-monitoring`, so
+  TC_N_18 fails against it.
+- **Test modes (optional):** a test mode makes it perform an action by itself when a station connects. The tests do
+  not need them, because they trigger these actions through the trigger API. Set one with
+  `python 2.0.1/csms.py <test_mode>`, or with `CSMS_TEST_MODE` or `CSMS_CP_ACTIONS` in `config.json`. The docstring
+  of [csms.py](2.0.1/csms.py) lists the modes.
+
+### Configuration
+
+All settings come from `2.0.1/config.json`; the simulator reads no environment variables. Key fields:
+
+- `CSMS_WSS_PORT`, `CSMS_WS_PORT`, `CSMS_TRIGGER_PORT` (optional, default 5001)
+- `BASIC_AUTH_CP`, `BASIC_AUTH_CP_F`, `BASIC_AUTH_CP_PASSWORD`, `CSMS_SP3_STATION_IDS`
 - `CONFIGURED_EVSE_ID`, `CONFIGURED_CONNECTOR_ID`, `CONFIGURED_CONNECTOR_TYPE`, `CONFIGURED_NUMBER_OF_EVSES`
 - `VALID_ID_TOKEN`, `VALID_ID_TOKEN_TYPE`, `GROUP_ID`, `MASTERPASS_GROUP_ID`
 - `CSMS_SERVER_CERT`, `CSMS_SERVER_KEY`, `CSMS_SERVER_RSA_CERT`, `CSMS_SERVER_RSA_KEY`, `CSMS_CA_CERT`, `CSMS_CA_KEY`
 - `CSMS_CP_ACTIONS`, `CSMS_TEST_MODE`
 
-The test runner's settings are in `pytest.ini`. To set up your own CSMS for the tests, follow the
-[setup guide](CSMS_SETUP.md).
+To set up your own CSMS for the tests, follow the [setup guide](CSMS_SETUP.md).
 
 
 ## Contributing
