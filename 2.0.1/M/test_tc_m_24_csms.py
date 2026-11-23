@@ -28,6 +28,12 @@ Tool validations:
       - status = Accepted
       - ocspResult = <OCSPResponse class as defined in IETF RFC 6960, DER encoded, base64 encoded>
 
+Test System:
+    The configured (V2G) certificate chain is in certs/ (contract_pki.py): V2G root CA -> sub-CA.
+    The ocspRequestData holds the hashes of the sub-CA, with the responder URL of the Test System's
+    OCSP service, mock_ocsp_responder.py. The mock answers about the requested certificate, signed by
+    the root CA. The CSMS passes the answer on to the Charging Station, which verifies it.
+
 Configuration:
     CSMS_ADDRESS              - WebSocket URL of the CSMS
     BASIC_AUTH_CP             - Charge Point identifier
@@ -35,6 +41,7 @@ Configuration:
     CONFIGURED_CONNECTOR_ID   - Connector id (default 1)
 """
 import asyncio
+import base64
 import logging
 import os
 import sys
@@ -49,9 +56,10 @@ from ocpp.v201.enums import (
     RegistrationStatusEnumType,
     ConnectorStatusEnumType,
     GetCertificateStatusEnumType,
-    HashAlgorithmEnumType,
 )
+from cryptography.x509 import ocsp
 
+import contract_pki
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
 from mock_ocsp_responder import MockOCSPResponder
@@ -95,14 +103,12 @@ async def test_tc_m_24():
 
         await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-        # Step 1: CS sends GetCertificateStatusRequest with OCSP data
-        ocsp_request_data = {
-            'hash_algorithm': HashAlgorithmEnumType.sha256,
-            'issuer_name_hash': 'aabbccdd' * 8,
-            'issuer_key_hash': 'eeff0011' * 8,
-            'serial_number': '01020304',
-            'responder_url': f'http://localhost:{OCSP_PORT}',
-        }
+        # Step 1: CS sends GetCertificateStatusRequest with the OCSP data of the configured chain's sub-CA
+        ocsp_request_data = contract_pki.ocsp_request_data(
+            contract_pki.load_certificate(contract_pki.SUB_CA),
+            contract_pki.load_certificate(contract_pki.ROOT_CA),
+            f'http://localhost:{OCSP_PORT}',
+        )
 
         response = await cp.send_get_certificate_status_request(ocsp_request_data)
 
@@ -113,6 +119,12 @@ async def test_tc_m_24():
         # Tool validation Step 2: ocspResult must be present
         assert response.ocsp_result is not None and len(response.ocsp_result) > 0, \
             "ocspResult must be present in GetCertificateStatusResponse"
+        # Tool validation Step 2: ocspResult is an OCSPResponse (RFC 6960), DER encoded, then base64 encoded
+        try:
+            ocsp_response = ocsp.load_der_ocsp_response(base64.b64decode(response.ocsp_result, validate=True))
+        except ValueError as exc:
+            pytest.fail(f"ocspResult is not a base64 encoded DER OCSPResponse: {exc}")
+        logging.info(f"ocspResult: OCSPResponse with responseStatus {ocsp_response.response_status.name}")
 
         logging.info("TC_M_24 completed successfully")
         start_task.cancel()

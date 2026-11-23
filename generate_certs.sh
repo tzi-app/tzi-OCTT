@@ -148,5 +148,14 @@ openssl req -x509 -new \
 
 echo "  Invalid client cert: $OUTPUT_DIR/invalid_client.pem (self-signed)"
 
+
+############################################
+# 5️⃣ ISO 15118 (V2G) certificate chain for
+#     TC_C_50/51/52 and TC_M_24
+############################################
+
+echo
+OUTPUT_DIR="$OUTPUT_DIR" "$(dirname "$0")/generate_contract_certs.sh"
+
 echo
 echo "All certificates generated successfully!"

@@ -33,19 +33,26 @@ Real-world flow (ISO 15118 Plug & Charge):
     4. OCSP  - An external OCSP responder (operated by the CA / MO) answers
                whether the contract certificate has been revoked.
 
-    In this test there is no real EV or real CA. The test spins up a mock OCSP
-    responder (mock_ocsp_responder.py) on localhost that returns "good" for any
-    query, and provides synthetic hash data pointing to it. This validates that
-    the CSMS correctly queries the responder URL from the received hash data
-    and accepts the authorization when the certificate is not revoked.
+    In this test there is no real EV or real CA. The certificate chain of the Test
+    System is configured in certs/ (contract_pki.py): V2G root CA -> sub-CA ->
+    contract certificate, whose CN is the configured eMAID. The test sends the hash
+    data of that chain. It spins up mock_ocsp_responder.py on localhost as the OCSP
+    service of the Test System. The mock answers about the certificate it is asked
+    about ("good"), signed by the CA that issued it. This validates that the CSMS
+    queries the responder URL of the received hash data, verifies the answer against
+    its configured root CA, and accepts the authorization.
 
 Prerequisite(s)
     - The configured eMAID is known by the CSMS as valid.
+    - The CN of the configured contract certificate equals the configured eMAID.
+    - The CSMS is configured with the root CA of the chain, certs/v2g_root_ca.pem
+      (tzi-csms: CONTRACT_CERTIFICATE_TRUSTED_CA_PEM_PATH).
 
 Test Scenario
     1. Test starts a mock OCSP responder on localhost:{OCSP_PORT} returning "good"
     2. CS (OCTT) sends AuthorizeRequest with eMAID + iso15118CertificateHashData
-       (responderURL points to the mock OCSP responder)
+       containing the hashes from the configured certificate chain (responderURL
+       points to the mock OCSP responder)
     3. CSMS queries the mock OCSP responder at the responderURL
     4. Mock OCSP responder returns certStatus = good
     5. CSMS responds: idTokenInfo.status=Accepted, certificateStatus=Accepted
@@ -55,6 +62,8 @@ Test Scenario
 
 Validations
     * CSMS sent at least one OCSP request (verified by mock responder counter)
+    * The OCSP requests are about certificates of the hash data (the Test System
+      checks that the received request is valid)
     * AuthorizeResponse: idTokenInfo.status=Accepted, certificateStatus=Accepted
     * TransactionEventResponse: idTokenInfo.status=Accepted
 
@@ -71,10 +80,10 @@ from ocpp.v201.enums import (
     TriggerReasonEnumType as TriggerReasonType,
     TransactionEventEnumType as TransactionEventType,
     AuthorizeCertificateStatusEnumType,
-    HashAlgorithmEnumType,
 )
 from ocpp.v201.call import TransactionEvent
-from ocpp.v201.datatypes import IdTokenType, OCSPRequestDataType
+from ocpp.v201.datatypes import IdTokenType
+from contract_pki import contract_chain_hash_data, contract_chain_with_issuers
 from tzi_charge_point import TziChargePoint
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 from reusable_states.parking_bay_occupied import parking_bay_occupied
@@ -109,16 +118,9 @@ async def test_tc_c_50(connection):
         await parking_bay_occupied(cp, evse_id=evse_id)
         await ev_connected_pre_session(cp, evse_id=evse_id, connector_id=connector_id)
 
-        # Build hash data pointing to our mock responder
-        iso15118_cert_hash_data = [
-            OCSPRequestDataType(
-                hash_algorithm=HashAlgorithmEnumType.sha256,
-                issuer_name_hash="dGVzdC1pc3N1ZXItbmFtZS1oYXNo",
-                issuer_key_hash="dGVzdC1pc3N1ZXIta2V5LWhhc2g=",
-                serial_number="1A2B3C4D",
-                responder_url=f"http://localhost:{OCSP_PORT}/ocsp",
-            )
-        ]
+        # Hash data of the configured contract certificate chain (the contract certificate and its
+        # sub-CA), with the responder URL of the Test System's OCSP service: our mock
+        iso15118_cert_hash_data = contract_chain_hash_data(f"http://localhost:{OCSP_PORT}/ocsp")
 
         # 2. AuthorizeRequest with eMAID idToken and iso15118CertificateHashData
         auth_response = await cp.send_authorization_request_with_iso15118(
@@ -129,6 +131,10 @@ async def test_tc_c_50(connection):
 
         # 3. Verify the CSMS actually queried the mock OCSP responder
         assert ocsp_responder.requests_received > 0, "CSMS did not send an OCSP request to the mock responder"
+        # The Test System checks that the requests it received are about certificates of the hash data
+        for request in ocsp_responder.requests:
+            assert any(request.is_about(certificate, issuer) for certificate, issuer in contract_chain_with_issuers()), \
+                f"OCSP request about a certificate that is not in the hash data (serial {request.serial_number:X})"
 
         # 5. CSMS responds: Accepted + certificateStatus Accepted
         assert auth_response is not None

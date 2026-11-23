@@ -25,24 +25,34 @@ Real-world flow (ISO 15118 Plug & Charge - revoked certificate):
                idTokenInfo.status=Invalid. The driver cannot charge.
     4. OCSP  - The CA/MO OCSP responder reports the certificate as revoked.
 
-    In this test the mock OCSP responder (mock_ocsp_responder.py) is
-    configured to return "revoked" for any query, simulating a revoked
-    contract certificate.
+    In this test the test sends the hash data of the configured certificate
+    chain of the Test System (contract_pki.py: V2G root CA -> sub-CA -> contract
+    certificate). The mock OCSP responder (mock_ocsp_responder.py), the OCSP
+    service of the Test System, answers that the contract certificate is revoked
+    (its sub-CA stays good). Its answers are signed by the CA that issued the
+    certificate, like a real responder's.
 
 Prerequisite(s)
     - The configured eMAID is known by the CSMS as valid (token itself is OK,
       but the certificate is revoked so authorization must be rejected).
+    - The contract certificate is revoked.
+    - The CSMS is configured with the root CA of the chain, certs/v2g_root_ca.pem
+      (tzi-csms: CONTRACT_CERTIFICATE_TRUSTED_CA_PEM_PATH).
 
 Test Scenario
-    1. Test starts a mock OCSP responder on localhost:{OCSP_PORT} returning "revoked"
+    1. Test starts a mock OCSP responder on localhost:{OCSP_PORT} that answers the
+       contract certificate is revoked
     2. CS (OCTT) sends AuthorizeRequest with eMAID + iso15118CertificateHashData
-       (responderURL points to the mock OCSP responder)
+       containing the hashes from the configured certificate chain (responderURL
+       points to the mock OCSP responder)
     3. CSMS queries the mock OCSP responder at the responderURL
     4. Mock OCSP responder returns certStatus = revoked
     5. CSMS responds: idTokenInfo.status=Invalid, certificateStatus=CertificateRevoked
 
 Validations
     * CSMS sent at least one OCSP request (verified by mock responder counter)
+    * The OCSP requests are about certificates of the hash data (the Test System
+      checks that the received request is valid)
     * AuthorizeResponse: idTokenInfo.status=Invalid, certificateStatus=CertificateRevoked
 
 Configuration
@@ -56,9 +66,9 @@ import os
 from ocpp.v201.enums import (
     AuthorizationStatusEnumType as AuthorizationStatusType,
     AuthorizeCertificateStatusEnumType,
-    HashAlgorithmEnumType,
 )
-from ocpp.v201.datatypes import OCSPRequestDataType
+import contract_pki
+from contract_pki import contract_chain_hash_data, contract_chain_with_issuers
 from tzi_charge_point import TziChargePoint
 from reusable_states.ev_connected_pre_session import ev_connected_pre_session
 from reusable_states.parking_bay_occupied import parking_bay_occupied
@@ -80,8 +90,9 @@ async def test_tc_c_51(connection):
     evse_id = 1
     connector_id = 1
 
-    # 1. Start mock OCSP responder that returns "revoked"
-    ocsp_responder = MockOCSPResponder(port=OCSP_PORT, cert_status="revoked")
+    # 1. Start mock OCSP responder that answers the contract certificate is revoked
+    contract_certificate = contract_pki.load_certificate(contract_pki.CONTRACT)
+    ocsp_responder = MockOCSPResponder(port=OCSP_PORT, revoked_serials={contract_certificate.serial_number})
     ocsp_responder.start()
 
     try:
@@ -92,16 +103,9 @@ async def test_tc_c_51(connection):
         await parking_bay_occupied(cp, evse_id=evse_id)
         await ev_connected_pre_session(cp, evse_id=evse_id, connector_id=connector_id)
 
-        # Build hash data pointing to our mock responder
-        iso15118_cert_hash_data = [
-            OCSPRequestDataType(
-                hash_algorithm=HashAlgorithmEnumType.sha256,
-                issuer_name_hash="cmV2b2tlZC1pc3N1ZXItbmFtZS1oYXNo",
-                issuer_key_hash="cmV2b2tlZC1pc3N1ZXIta2V5LWhhc2g=",
-                serial_number="DEADBEEF",
-                responder_url=f"http://localhost:{OCSP_PORT}/ocsp",
-            )
-        ]
+        # Hash data of the configured contract certificate chain (the contract certificate and its
+        # sub-CA), with the responder URL of the Test System's OCSP service: our mock
+        iso15118_cert_hash_data = contract_chain_hash_data(f"http://localhost:{OCSP_PORT}/ocsp")
 
         # 2. AuthorizeRequest with eMAID idToken and iso15118CertificateHashData (revoked cert)
         auth_response = await cp.send_authorization_request_with_iso15118(
@@ -112,6 +116,10 @@ async def test_tc_c_51(connection):
 
         # 3. Verify the CSMS actually queried the mock OCSP responder
         assert ocsp_responder.requests_received > 0, "CSMS did not send an OCSP request to the mock responder"
+        # The Test System checks that the requests it received are about certificates of the hash data
+        for request in ocsp_responder.requests:
+            assert any(request.is_about(certificate, issuer) for certificate, issuer in contract_chain_with_issuers()), \
+                f"OCSP request about a certificate that is not in the hash data (serial {request.serial_number:X})"
 
         # 5. CSMS responds: authorization rejected because the certificate is revoked
         assert auth_response is not None

@@ -46,25 +46,28 @@ Real-world flow (ISO 15118 Plug & Charge - central validation):
                values itself. This tests a much deeper code path.
 
 What this test sets up:
-    Since there is no real EV, CA, or OCSP infrastructure, this test creates
-    everything at runtime:
-    - Generates a self-signed EC (P-256) contract certificate using the
-      `cryptography` library, with an AIA extension embedding the OCSP
-      responder URL http://localhost:19082/ocsp
-    - Spins up a mock OCSP responder (mock_ocsp_responder.py) on port 19082
-      that returns a structurally valid RFC 6960 DER response with
-      certStatus = good
-    - No external files, certificates, or services are needed
+    Since there is no real EV, CA, or OCSP infrastructure, the Test System's
+    certificate chain is configured in certs/ (contract_pki.py, made by
+    generate_contract_certs.sh): V2G root CA -> sub-CA -> contract certificate.
+    - All keys are EC (P-256). The contract certificate's CN is the configured
+      eMAID. The contract certificate and the sub-CA have an AIA extension with
+      the OCSP responder URL http://localhost:19082/ocsp.
+    - The test spins up the OCSP service of the Test System, mock_ocsp_responder.py,
+      on the port of that URL. It answers about the certificate it is asked about
+      ("good"), signed by the CA that issued it.
 
 Prerequisite(s)
     - The configured eMAID is known by the CSMS as valid.
+    - The contract certificate is signed (through the sub-CA) by the root CA that
+      the CSMS is configured with, certs/v2g_root_ca.pem (tzi-csms:
+      CONTRACT_CERTIFICATE_TRUSTED_CA_PEM_PATH).
 
 Test Scenario
-    1. Test generates a self-signed contract certificate with an AIA extension
-       containing OCSP responder URL http://localhost:19082/ocsp
+    1. Test loads the configured contract certificate chain; the contract
+       certificate and its sub-CA name OCSP responder URL http://localhost:19082/ocsp
     2. Test starts a mock OCSP responder on port 19082 returning "good"
-    3. CS (OCTT) sends AuthorizeRequest with eMAID + certificate PEM
-       (iso15118CertificateHashData is ABSENT — CSMS must derive it)
+    3. CS (OCTT) sends AuthorizeRequest with eMAID + the contract certificate
+       chain in PEM (iso15118CertificateHashData is ABSENT — CSMS must derive it)
     4. CSMS parses the cert, extracts the OCSP responder URL from the AIA
        extension, computes issuer hashes and serial number, builds an
        RFC 6960 OCSP request, and POSTs it to the mock responder
@@ -76,6 +79,9 @@ Test Scenario
 
 Validations
     * CSMS sent at least one OCSP request (verified by mock responder counter)
+    * The OCSP requests are about certificates of the chain, among them the
+      contract certificate (the Test System checks that the received request is
+      valid; key type ECDSA; the chain contains a sub-CA)
     * AuthorizeResponse: idTokenInfo.status=Accepted, certificateStatus=Accepted
     * TransactionEventResponse: idTokenInfo.status=Accepted
 
@@ -86,12 +92,7 @@ Configuration
 import asyncio
 import pytest
 import os
-
-from cryptography import x509
-from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from ocpp.v201.enums import (
     AuthorizationStatusEnumType as AuthorizationStatusType,
@@ -107,45 +108,13 @@ from reusable_states.parking_bay_occupied import parking_bay_occupied
 from reusable_states.energy_transfer_started import energy_transfer_started
 from utils import get_basic_auth_headers, generate_transaction_id, now_iso, validate_schema
 from mock_ocsp_responder import MockOCSPResponder
+from contract_pki import contract_chain_pem, contract_chain_with_issuers, contract_ocsp_url
 
 BASIC_AUTH_CP = os.environ['CP201_SP1']
 BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 
-OCSP_PORT = 19082
-
-
-def generate_contract_certificate(ocsp_responder_url: str) -> str:
-    """Generate a self-signed contract certificate with an AIA extension
-    pointing to the given OCSP responder URL. Returns PEM string."""
-    key = ec.generate_private_key(ec.SECP256R1())
-
-    subject = issuer = x509.Name([
-        x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, "DE-TZI-C12345-A"),
-        x509.NameAttribute(x509.oid.NameOID.ORGANIZATION_NAME, "TZI Test"),
-    ])
-
-    now = datetime.now(timezone.utc)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - timedelta(hours=1))
-        .not_valid_after(now + timedelta(days=365))
-        .add_extension(
-            x509.AuthorityInformationAccess([
-                x509.AccessDescription(
-                    AuthorityInformationAccessOID.OCSP,
-                    x509.UniformResourceIdentifier(ocsp_responder_url),
-                ),
-            ]),
-            critical=False,
-        )
-        .sign(key, hashes.SHA256())
-    )
-
-    return cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+# The Test System's OCSP service listens where the configured certificates point (19082).
+OCSP_PORT = urlparse(contract_ocsp_url()).port
 
 
 @pytest.mark.asyncio
@@ -157,10 +126,10 @@ async def test_tc_c_52(connection):
     evse_id = 1
     connector_id = 1
 
-    ocsp_url = f"http://localhost:{OCSP_PORT}/ocsp"
-
-    # 1. Generate contract certificate with AIA pointing to mock OCSP responder
-    contract_certificate = generate_contract_certificate(ocsp_url)
+    # 1. The configured contract certificate chain (contract certificate + sub-CA, PEM); both
+    #    name the mock OCSP responder in their AIA extension
+    contract_certificate = contract_chain_pem()
+    contract, sub_ca = contract_chain_with_issuers()[0]
 
     # 2. Start mock OCSP responder that returns "good"
     ocsp_responder = MockOCSPResponder(port=OCSP_PORT, cert_status="good")
@@ -185,6 +154,13 @@ async def test_tc_c_52(connection):
 
         # 4. Verify the CSMS actually queried the mock OCSP responder
         assert ocsp_responder.requests_received > 0, "CSMS did not send an OCSP request to the mock responder"
+        # The Test System checks that the requests it received are about certificates of the chain,
+        # among them the contract certificate
+        for request in ocsp_responder.requests:
+            assert any(request.is_about(certificate, issuer) for certificate, issuer in contract_chain_with_issuers()), \
+                f"OCSP request about a certificate that is not in the chain (serial {request.serial_number:X})"
+        assert any(request.is_about(contract, sub_ca) for request in ocsp_responder.requests), \
+            "CSMS did not ask about the contract certificate"
 
         # 6. CSMS responds: Accepted + certificateStatus Accepted
         assert auth_response is not None
