@@ -3,7 +3,7 @@ import json
 import logging
 import sys
 
-from ocpp.routing import on
+from ocpp.routing import on, after
 from ocpp.v16 import ChargePoint, call, call_result
 from ocpp.v16.enums import (
     Action,
@@ -310,62 +310,87 @@ class TziChargePoint16(ChargePoint):
 
     # ── CSMS-initiated messages (requests FROM the CSMS) ──
 
+    # Each request handler below is followed by an @after hook that sets its "_received_*" event.
+    # The ocpp library runs the hook once the response has been sent, so a test waiting on the event
+    # sends its next message, or closes the connection, only after the Charge Point has answered.
+
     @on(Action.remote_start_transaction)
     async def on_remote_start_transaction(self, id_tag, connector_id=None, **kwargs):
         logging.info(f"Received RemoteStartTransaction: id_tag={id_tag}, connector_id={connector_id}")
         self._remote_start_id_tag = id_tag
         self._remote_start_connector_id = connector_id
         self._remote_start_charging_profile = kwargs.get('charging_profile')
-        self._received_remote_start.set()
         return call_result.RemoteStartTransaction(status=self._remote_start_response_status)
+
+    @after(Action.remote_start_transaction)
+    async def after_remote_start_transaction(self, **kwargs):
+        self._received_remote_start.set()
 
     @on(Action.remote_stop_transaction)
     async def on_remote_stop_transaction(self, transaction_id, **kwargs):
         logging.info(f"Received RemoteStopTransaction: transaction_id={transaction_id}")
         self._remote_stop_transaction_id = transaction_id
-        self._received_remote_stop.set()
         return call_result.RemoteStopTransaction(status=self._remote_stop_response_status)
+
+    @after(Action.remote_stop_transaction)
+    async def after_remote_stop_transaction(self, **kwargs):
+        self._received_remote_stop.set()
 
     @on(Action.reset)
     async def on_reset(self, type, **kwargs):
         logging.info(f"Received Reset: type={type}")
         self._reset_type = type
-        self._received_reset.set()
         return call_result.Reset(status=ResetStatus.accepted)
+
+    @after(Action.reset)
+    async def after_reset(self, **kwargs):
+        self._received_reset.set()
 
     @on(Action.unlock_connector)
     async def on_unlock_connector(self, connector_id, **kwargs):
         logging.info(f"Received UnlockConnector: connector_id={connector_id}")
         self._unlock_connector_id = connector_id
-        self._received_unlock_connector.set()
         return call_result.UnlockConnector(status=self._unlock_response_status)
+
+    @after(Action.unlock_connector)
+    async def after_unlock_connector(self, **kwargs):
+        self._received_unlock_connector.set()
 
     @on(Action.get_configuration)
     async def on_get_configuration(self, key=None, **kwargs):
         logging.info(f"Received GetConfiguration: key={key}")
         self._get_configuration_keys = key
-        self._received_get_configuration.set()
         return call_result.GetConfiguration(
             configuration_key=self._configuration_key_list,
         )
+
+    @after(Action.get_configuration)
+    async def after_get_configuration(self, **kwargs):
+        self._received_get_configuration.set()
 
     @on(Action.change_configuration)
     async def on_change_configuration(self, key, value, **kwargs):
         logging.info(f"Received ChangeConfiguration: key={key}, value={value}")
         self._change_configuration_key = key
         self._change_configuration_value = value
-        self._received_change_configuration.set()
         return call_result.ChangeConfiguration(
             status=self._change_configuration_response_status,
         )
+
+    @after(Action.change_configuration)
+    async def after_change_configuration(self, **kwargs):
+        self._received_change_configuration.set()
 
     @on(Action.change_availability)
     async def on_change_availability(self, connector_id, type, **kwargs):
         logging.info(f"Received ChangeAvailability: connector_id={connector_id}, type={type}")
         self._change_availability_connector_id = connector_id
         self._change_availability_type = type
-        self._received_change_availability.set()
         return call_result.ChangeAvailability(status=self._change_availability_response_status)
+
+    @after(Action.change_availability)
+    async def after_change_availability(self, **kwargs):
+        self._received_change_availability.set()
 
     @on(Action.reserve_now)
     async def on_reserve_now(self, connector_id, expiry_date, id_tag, reservation_id, **kwargs):
@@ -376,23 +401,32 @@ class TziChargePoint16(ChargePoint):
             'id_tag': id_tag,
             'reservation_id': reservation_id,
         }
-        self._received_reserve_now.set()
         return call_result.ReserveNow(status=self._reserve_now_response_status)
+
+    @after(Action.reserve_now)
+    async def after_reserve_now(self, **kwargs):
+        self._received_reserve_now.set()
 
     @on(Action.cancel_reservation)
     async def on_cancel_reservation(self, reservation_id, **kwargs):
         logging.info(f"Received CancelReservation: reservation_id={reservation_id}")
         self._cancel_reservation_id = reservation_id
-        self._received_cancel_reservation.set()
         return call_result.CancelReservation(status=self._cancel_reservation_response_status)
+
+    @after(Action.cancel_reservation)
+    async def after_cancel_reservation(self, **kwargs):
+        self._received_cancel_reservation.set()
 
     @on(Action.trigger_message)
     async def on_trigger_message(self, requested_message, connector_id=None, **kwargs):
         logging.info(f"Received TriggerMessage: requested_message={requested_message}, connector_id={connector_id}")
         self._trigger_message_requested = requested_message
         self._trigger_message_connector_id = connector_id
-        self._received_trigger_message.set()
         return call_result.TriggerMessage(status=self._trigger_message_response_status)
+
+    @after(Action.trigger_message)
+    async def after_trigger_message(self, **kwargs):
+        self._received_trigger_message.set()
 
     @on(Action.set_charging_profile)
     async def on_set_charging_profile(self, connector_id, cs_charging_profiles, **kwargs):
@@ -402,8 +436,11 @@ class TziChargePoint16(ChargePoint):
             'cs_charging_profiles': cs_charging_profiles,
         }
         self._set_charging_profile_count += 1
-        self._received_set_charging_profile.set()
         return call_result.SetChargingProfile(status=self._set_charging_profile_response_status)
+
+    @after(Action.set_charging_profile)
+    async def after_set_charging_profile(self, **kwargs):
+        self._received_set_charging_profile.set()
 
     @on(Action.clear_charging_profile)
     async def on_clear_charging_profile(self, id=None, connector_id=None,
@@ -415,8 +452,11 @@ class TziChargePoint16(ChargePoint):
             'stack_level': stack_level,
         }
         self._clear_charging_profile_count += 1
-        self._received_clear_charging_profile.set()
         return call_result.ClearChargingProfile(status=self._clear_charging_profile_response_status)
+
+    @after(Action.clear_charging_profile)
+    async def after_clear_charging_profile(self, **kwargs):
+        self._received_clear_charging_profile.set()
 
     @on(Action.get_composite_schedule)
     async def on_get_composite_schedule(self, connector_id, duration, charging_rate_unit=None, **kwargs):
@@ -426,11 +466,14 @@ class TziChargePoint16(ChargePoint):
             'duration': duration,
             'charging_rate_unit': charging_rate_unit,
         }
-        self._received_get_composite_schedule.set()
         return call_result.GetCompositeSchedule(
             status=GetCompositeScheduleStatus.accepted,
             **self._get_composite_schedule_response,
         )
+
+    @after(Action.get_composite_schedule)
+    async def after_get_composite_schedule(self, **kwargs):
+        self._received_get_composite_schedule.set()
 
     @on(Action.update_firmware)
     async def on_update_firmware(self, location, retrieve_date, **kwargs):
@@ -439,21 +482,30 @@ class TziChargePoint16(ChargePoint):
             'location': location,
             'retrieve_date': retrieve_date,
         }
-        self._received_update_firmware.set()
         return call_result.UpdateFirmware()
+
+    @after(Action.update_firmware)
+    async def after_update_firmware(self, **kwargs):
+        self._received_update_firmware.set()
 
     @on(Action.get_diagnostics)
     async def on_get_diagnostics(self, location, **kwargs):
         logging.info(f"Received GetDiagnostics: location={location}")
         self._get_diagnostics_data = {'location': location, **kwargs}
-        self._received_get_diagnostics.set()
         return call_result.GetDiagnostics(file_name=self._get_diagnostics_filename)
+
+    @after(Action.get_diagnostics)
+    async def after_get_diagnostics(self, **kwargs):
+        self._received_get_diagnostics.set()
 
     @on(Action.clear_cache)
     async def on_clear_cache(self, **kwargs):
         logging.info("Received ClearCache")
-        self._received_clear_cache.set()
         return call_result.ClearCache(status=self._clear_cache_response_status)
+
+    @after(Action.clear_cache)
+    async def after_clear_cache(self, **kwargs):
+        self._received_clear_cache.set()
 
     @on(Action.send_local_list)
     async def on_send_local_list(self, list_version, update_type, local_authorization_list=None, **kwargs):
@@ -464,14 +516,20 @@ class TziChargePoint16(ChargePoint):
             'local_authorization_list': local_authorization_list,
         }
         self._send_local_list_count += 1
-        self._received_send_local_list.set()
         return call_result.SendLocalList(status=self._send_local_list_response_status)
+
+    @after(Action.send_local_list)
+    async def after_send_local_list(self, **kwargs):
+        self._received_send_local_list.set()
 
     @on(Action.get_local_list_version)
     async def on_get_local_list_version(self, **kwargs):
         logging.info("Received GetLocalListVersion")
-        self._received_get_local_list_version.set()
         return call_result.GetLocalListVersion(list_version=self._local_list_version)
+
+    @after(Action.get_local_list_version)
+    async def after_get_local_list_version(self, **kwargs):
+        self._received_get_local_list_version.set()
 
     @on(Action.install_certificate)
     async def on_install_certificate(self, certificate_type, certificate, **kwargs):
@@ -480,39 +538,54 @@ class TziChargePoint16(ChargePoint):
             'certificate_type': certificate_type,
             'certificate': certificate,
         }
-        self._received_install_certificate.set()
         return call_result.InstallCertificate(status=self._install_certificate_response_status)
+
+    @after(Action.install_certificate)
+    async def after_install_certificate(self, **kwargs):
+        self._received_install_certificate.set()
 
     @on(Action.get_installed_certificate_ids)
     async def on_get_installed_certificate_ids(self, certificate_type, **kwargs):
         logging.info(f"Received GetInstalledCertificateIds: type={certificate_type}")
         self._get_installed_certificate_ids_data = {'certificate_type': certificate_type}
-        self._received_get_installed_certificate_ids.set()
         return call_result.GetInstalledCertificateIds(
             status=self._get_installed_certificate_ids_response_status,
             certificate_hash_data=self._installed_certificate_hash_data or None,
         )
 
+    @after(Action.get_installed_certificate_ids)
+    async def after_get_installed_certificate_ids(self, **kwargs):
+        self._received_get_installed_certificate_ids.set()
+
     @on(Action.delete_certificate)
     async def on_delete_certificate(self, certificate_hash_data, **kwargs):
         logging.info(f"Received DeleteCertificate")
         self._delete_certificate_data = certificate_hash_data
-        self._received_delete_certificate.set()
         return call_result.DeleteCertificate(status=self._delete_certificate_response_status)
+
+    @after(Action.delete_certificate)
+    async def after_delete_certificate(self, **kwargs):
+        self._received_delete_certificate.set()
 
     @on(Action.extended_trigger_message)
     async def on_extended_trigger_message(self, requested_message, connector_id=None, **kwargs):
         logging.info(f"Received ExtendedTriggerMessage: requested_message={requested_message}")
         self._extended_trigger_requested = requested_message
-        self._received_extended_trigger.set()
         return call_result.ExtendedTriggerMessage(status=self._extended_trigger_response_status)
+
+    @after(Action.extended_trigger_message)
+    async def after_extended_trigger_message(self, **kwargs):
+        self._received_extended_trigger.set()
 
     @on(Action.certificate_signed)
     async def on_certificate_signed(self, certificate_chain, **kwargs):
         logging.info("Received CertificateSigned")
         self._certificate_signed_chain = certificate_chain
-        self._received_certificate_signed.set()
         return call_result.CertificateSigned(status=self._certificate_signed_response_status)
+
+    @after(Action.certificate_signed)
+    async def after_certificate_signed(self, **kwargs):
+        self._received_certificate_signed.set()
 
     @on(Action.signed_update_firmware)
     async def on_signed_update_firmware(self, request_id, firmware, **kwargs):
@@ -521,8 +594,11 @@ class TziChargePoint16(ChargePoint):
             'request_id': request_id,
             'firmware': firmware,
         }
-        self._received_signed_update_firmware.set()
         return call_result.SignedUpdateFirmware(status=self._signed_update_firmware_response_status)
+
+    @after(Action.signed_update_firmware)
+    async def after_signed_update_firmware(self, **kwargs):
+        self._received_signed_update_firmware.set()
 
     @on(Action.get_log)
     async def on_get_log(self, log, log_type, request_id, **kwargs):
@@ -532,5 +608,8 @@ class TziChargePoint16(ChargePoint):
             'log_type': log_type,
             'request_id': request_id,
         }
-        self._received_get_log.set()
         return call_result.GetLog(status=self._get_log_response_status)
+
+    @after(Action.get_log)
+    async def after_get_log(self, **kwargs):
+        self._received_get_log.set()

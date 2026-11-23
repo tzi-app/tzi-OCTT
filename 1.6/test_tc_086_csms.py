@@ -77,13 +77,18 @@ Expected result(s) / behaviour: N/A (no explicit expected result row in document
 
 Implementation Notes:
     - The expected BootNotification.conf status is not specified in the test case document. Test assumes Accepted.
-    - This test only covers security profile 2 (basic auth + server-side TLS). SP3 (mutual TLS with client
-      certificates) is not covered here.
-    - The cipher suite validation checks that the negotiated cipher is one of the required set, but cannot
-      verify that ALL four cipher suites are simultaneously supported from a single connection.
-    - The commonName RDN is validated for existence but NOT compared against the actual server FQDN.
-      check_hostname=False is used because the test environment may use localhost/IP rather than a real FQDN.
-      A production-grade validation would compare the CN value against the hostname from CSMS_ADDRESS.
+    - Covers security profile 2: TLS with the server certificate, with the username/password in the HTTP request.
+      TC_087 covers security profile 3 (client certificates).
+    - The Charge Point is CP16_SP1. Every connection of this suite runs over TLS, so its connection is the one
+      described for security profile 2. CP16_SP2 is not used: TC_083 upgrades it to security profile 3, and the
+      1.6 tests run in one pytest session.
+    - Cipher suites: a handshake negotiates one suite, so each required TLS 1.2 suite gets a TLS handshake of its
+      own that offers only that suite. Each one is steps 1-4 with the step 2 validations, and the connection is
+      terminated before any HTTP upgrade. These handshakes run before the connection that goes through steps 1-10.
+    - The step 2 certificate validations run on every certificate the Central System serves: the one of the
+      connection of steps 1-10, and the one of each cipher suite handshake. The ECDHE_ECDSA suites are served an EC
+      certificate, and the TLS_RSA suites an RSA certificate.
+    - The commonName is compared with the host of CSMS_ADDRESS, the endpoint of the server.
 
 Ambiguities in the test case document:
     - Step 9: "[Send per connector and connectorId=0.]" — unclear whether this means "for each connector
@@ -93,9 +98,15 @@ Ambiguities in the test case document:
 """
 
 import asyncio
+import contextlib
 import os
+import ssl
+from urllib.parse import urlparse
+
 import pytest
 import websockets
+from cryptography.x509 import load_der_x509_certificate
+from cryptography.x509.oid import NameOID
 
 from ocpp.v16.enums import RegistrationStatus
 
@@ -107,72 +118,89 @@ BASIC_AUTH_CP = os.environ['CP16_SP1']
 TEST_USER_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
 CSMS_ADDRESS = os.environ['CSMS_ADDRESS']
 
+# Step 2: the required TLS 1.2 cipher suites, by their OpenSSL names
+REQUIRED_TLS12_CIPHERS = (
+    'ECDHE-ECDSA-AES128-GCM-SHA256',  # TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    'ECDHE-ECDSA-AES256-GCM-SHA384',  # TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    'AES128-GCM-SHA256',              # TLS_RSA_WITH_AES_128_GCM_SHA256
+    'AES256-GCM-SHA384',              # TLS_RSA_WITH_AES_256_GCM_SHA384
+)
+
+
+def validate_server_certificate(der_cert, server_host):
+    """Step 2 validations on a certificate the Central System served: the key size, the X.509 PEM format,
+    a serial number, and a commonName RDN that consists of the FQDN of the endpoint."""
+    # Key size: RSA/DSA >= 2048 bits, ECC >= 224 bits
+    validate_cert_key_size(der_cert)
+    validate_cert_x509_pem(der_cert)
+
+    cert = load_der_x509_certificate(der_cert)
+    assert cert.serial_number is not None and cert.serial_number > 0, \
+        "Certificate must include a serial number"
+    common_names = [attribute.value for attribute in cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
+    assert common_names, "Certificate subject must contain a commonName RDN"
+    assert server_host in common_names, \
+        f"The commonName must consist of the FQDN of the endpoint ({server_host}), got {common_names}"
+
+
+async def assert_tls12_cipher_suites_supported(uri):
+    """Step 2: the Central System supports each required cipher suite, checked with a TLS 1.2 handshake per
+    suite that offers only that suite. Each handshake is closed without an HTTP upgrade. That makes it a check
+    of the TLS layer, and the Central System does not see it as a connection of the Charge Point."""
+    endpoint = urlparse(uri)
+    host, port = endpoint.hostname, endpoint.port or 443
+    for cipher in REQUIRED_TLS12_CIPHERS:
+        ssl_ctx = create_ssl_context(ca_cert=os.environ.get('TLS_CA_CERT'), check_hostname=False)
+        ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ssl_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+        ssl_ctx.set_ciphers(cipher)
+
+        try:
+            _, writer = await asyncio.open_connection(host, port, ssl=ssl_ctx, server_hostname=host)
+        except Exception as exc:
+            pytest.fail(f"Required TLS 1.2 cipher suite not supported: {cipher}, error={exc}")
+
+        try:
+            ssl_obj = writer.get_extra_info('ssl_object')
+            negotiated = ssl_obj.cipher()[0]
+            assert negotiated == cipher, f"Expected cipher suite {cipher}, negotiated {negotiated}"
+            validate_server_certificate(ssl_obj.getpeercert(binary_form=True), host)
+        finally:
+            writer.close()
+            with contextlib.suppress(ConnectionError, ssl.SSLError):
+                await writer.wait_closed()
+
 
 @pytest.mark.asyncio
 async def test_tc_086():
-    # Create SSL context for TLS connection (SP2: server cert only)
+    uri = f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}'
+    server_host = urlparse(uri).hostname
+
+    # Step 2 validation, cipher suites. A handshake negotiates one suite, so each required suite gets a TLS
+    # handshake of its own (steps 1-4), terminated before any HTTP upgrade. These run before the connection
+    # that goes through steps 1-10.
+    await assert_tls12_cipher_suites_supported(uri)
+
+    # Step 1-6 (security profile 2): TLS handshake with the server certificate only, then the WebSocket
+    # upgrade with the username/password
     ssl_ctx = create_ssl_context(
         ca_cert=os.environ.get('TLS_CA_CERT'),
         check_hostname=False,
     )
-
-    # Step 1-6: TLS handshake + WebSocket upgrade with basic auth
     ws = await websockets.connect(
-        uri=f'{CSMS_ADDRESS}/{BASIC_AUTH_CP}',
+        uri=uri,
         subprotocols=['ocpp1.6'],
         ssl=ssl_ctx,
         extra_headers=get_basic_auth_headers(BASIC_AUTH_CP, TEST_USER_PASSWORD),
     )
     assert ws.open
 
-    # Tool Validation (Step 2): TLS version, cipher, certificate checks
+    # Tool Validation (Step 2) on this connection: TLS version and the server certificate
     tls_info = get_tls_info(ws)
     assert tls_info is not None
-
-    # TLS version must be 1.2 or above
     assert tls_info['tls_version'] in ('TLSv1.2', 'TLSv1.3'), \
         f"Expected TLS 1.2+, got {tls_info['tls_version']}"
-
-    # Verify negotiated cipher is from the required set
-    REQUIRED_CIPHERS = {
-        # TLS 1.2 IANA names
-        'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256',
-        'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384',
-        'TLS_RSA_WITH_AES_128_GCM_SHA256',
-        'TLS_RSA_WITH_AES_256_GCM_SHA384',
-        # TLS 1.2 OpenSSL names
-        'ECDHE-ECDSA-AES128-GCM-SHA256',
-        'ECDHE-ECDSA-AES256-GCM-SHA384',
-        'AES128-GCM-SHA256',
-        'AES256-GCM-SHA384',
-        # TLS 1.3 cipher suites (same AES-GCM algorithms).
-        # Not part of the OCPP 1.6 Security Whitepaper (which predates TLS 1.3),
-        # but accepted here: TLS 1.3 is strictly more secure and rejecting it
-        # would prevent legitimate security hardening by CSMS operators.
-        'TLS_AES_128_GCM_SHA256',
-        'TLS_AES_256_GCM_SHA384',
-    }
-    cipher_name = tls_info['cipher'][0]
-    assert cipher_name in REQUIRED_CIPHERS, \
-        f"Negotiated cipher '{cipher_name}' not in required set"
-
-    # Validate certificate key size (RSA/DSA >= 2048 bits, ECC >= 224 bits)
-    der_cert = tls_info['peer_cert_der']
-    validate_cert_key_size(der_cert)
-
-    # Validate certificate is valid X.509 in PEM format
-    validate_cert_x509_pem(der_cert)
-
-    # Validate certificate has a serial number
-    from cryptography.x509 import load_der_x509_certificate
-    cert = load_der_x509_certificate(der_cert)
-    assert cert.serial_number is not None and cert.serial_number > 0, \
-        "Certificate must include a serial number"
-
-    # Validate commonName RDN contains the FQDN of the server
-    from cryptography.x509.oid import NameOID
-    cn_attrs = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
-    assert len(cn_attrs) > 0, "Certificate subject must contain a commonName RDN"
+    validate_server_certificate(tls_info['peer_cert_der'], server_host)
 
     cp = TziChargePoint16(BASIC_AUTH_CP, ws)
     start_task = asyncio.create_task(cp.start())
