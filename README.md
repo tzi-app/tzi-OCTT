@@ -2,7 +2,7 @@
 
 Python (`pytest`) implementation of OCTT scenarios for CSMS (Central System Management System) verification against OCPP 2.0.1 and OCPP 1.6J.
 
-> **Need to test your CSMS?** Here's a [step-by-step setup guide](ChargingPointsConfig.md). It covers TLS, the six
+> **Need to test your CSMS?** Here's a [step-by-step setup guide](CSMS_SETUP.md). It covers TLS, the six
 > test charging stations, the ID tokens, and the trigger API your CSMS has to provide, through to your first test run.
 
 Based on:
@@ -35,7 +35,8 @@ Based on:
 ├── generate_certs.sh             # Regenerates all test certificates
 ├── generate_contract_certs.sh    # Regenerates the ISO 15118 certificate chain
 ├── requirements_definitions.json # OCPP 2.0.1 requirement definitions (reference data)
-├── ChargingPointsConfig.md       # Setup guide: testing your CSMS
+├── CSMS_SETUP.md                 # Setup guide: testing your CSMS
+├── DEBUGGING.md                  # Debugging OCPP traffic with --log-messages
 ├── pytest.ini                    # Test settings (defaults) and pytest options
 └── requirements.txt              # Python dependencies
 ```
@@ -81,7 +82,7 @@ Based on:
 
 ## Testing your CSMS
 
-The [setup guide](ChargingPointsConfig.md) walks through each step. In short, your CSMS needs:
+The [setup guide](CSMS_SETUP.md) walks through each step. In short, your CSMS needs:
 
 1. **TLS on its WebSocket endpoint.** Every test connects over `wss://`, security profile 1 included. The CSMS needs an
    EC and an RSA server certificate for `localhost` issued by `certs/ca.pem`, and must trust `certs/ca.pem` for client
@@ -98,14 +99,14 @@ The [setup guide](ChargingPointsConfig.md) walks through each step. In short, yo
 
 Every setting has a default in `pytest.ini`, and an environment variable of the same name overrides it: for example
 `CSMS_ADDRESS`, `CSMS_TRIGGER_ADDRESS`, or the station IDs. The setup guide's
-[settings reference](ChargingPointsConfig.md#reference-all-settings) lists them all.
+[settings reference](CSMS_SETUP.md#reference-all-settings) lists them all.
 
 ## CSMS Trigger API
 
-Many OCTT test scenarios require CSMS-initiated actions (e.g., RequestStartTransaction, Reset, SetChargingProfile). In
-a manual OCTT run, an operator triggers these from the CSMS user interface. To automate this, the tests call an
-**HTTP trigger API that your CSMS has to provide**. 179 of the 252 OCPP 2.0.1 test files and 58 of the 75 OCPP 1.6J
-test files use it.
+Many OCTT test scenarios require CSMS-initiated actions (e.g., RequestStartTransaction, Reset, SetChargingProfile). The
+official test case documents mark these as Manual Actions: a person has to make the CSMS send the request. To automate
+this, the tests call an **HTTP trigger API that your CSMS has to provide**. 179 of the 252 OCPP 2.0.1 test files and 58
+of the 75 OCPP 1.6J test files use it.
 
 The tests call it through helper modules:
 
@@ -120,12 +121,12 @@ answers with HTTP 200 and a JSON body.
 | Endpoint | Body | What your CSMS does |
 |---|---|---|
 | `/api/octt/2.0.1/{stationId}/call/{Action}` | The OCPP 2.0.1 request payload | Sends that CALL to the station, e.g. `call/RequestStartTransaction` |
-| `/api/octt/2.0.1/{stationId}/{endpoint}` | Depends on the endpoint | Control endpoints: `trigger-message`, `update-basic-auth-password`, `get-variables`, `set-variables`, `set-items-per-message`, `set-pending-boot`, `set-security-profile` |
+| `/api/octt/2.0.1/{stationId}/{endpoint}` | Depends on the endpoint | Control endpoints: `trigger-message`, `update-basic-auth-password`, `get-variables`, `set-variables`, `clear-variable-monitoring`, `set-items-per-message`, `set-pending-boot`, `set-security-profile` |
 | `/api/octt/1.6/{stationId}/{action}` | The OCPP 1.6 request payload | Sends the matching CALL. Actions are kebab-case, e.g. `remote-start-transaction` |
 | `/api/octt/set-basic-auth-password` | `{"station_id": "...", "password": "..."}` | Stores a new Basic Auth password for the station |
 | `/api/octt/create-token` | `{"token_id": "...", "status": "..."}` | Creates or updates an ID token with that status (Blocked or Expired) |
 
-Step 7 of the setup guide has [the full contract](ChargingPointsConfig.md#step-7--implement-the-trigger-api): every
+Step 7 of the setup guide has [the full contract](CSMS_SETUP.md#step-7--implement-the-trigger-api): every
 action, and the body and behavior of each control endpoint. tzi-csms, for example, provides the API when it is built
 with `--features octt-triggers`.
 
@@ -161,8 +162,7 @@ Run a specific test, logging OCPP bidirectional messages:
 pytest -v -p no:warnings ./2.0.1/K/test_tc_k_01_csms.py --log-messages
 ```
 
-`--log-messages` writes the messages straight to the terminal (`/dev/tty`). Without a terminal, for example in CI, run
-pytest under `script -q <logfile> …`.
+[Debugging](#debugging) explains the output, and how to save it or use it without a terminal, for example in CI.
 
 Run full 2.0.1 suite:
 
@@ -200,7 +200,27 @@ pytest --collect-only -q ./1.6
 ```
 
 Some tests change a station's configuration in the CSMS: its Basic Auth password or its security profile. Restore the
-stations before a rerun ([setup guide, step 10](ChargingPointsConfig.md#step-10--reset-the-stations-before-a-rerun)).
+stations before a rerun ([setup guide, step 10](CSMS_SETUP.md#step-10--reset-the-stations-before-a-rerun)).
+
+## Debugging
+
+When a test fails, run it alone with `--log-messages`. It prints every OCPP message between the test's charging station
+and your CSMS, in both directions, with its payload:
+
+```text
+CSMS >>> [CALL] Reset (id=2ceb5d3f-009f-4f30-a49d-d3018b2267b4)
+{
+  "type": "OnIdle"
+}
+
+CP  >>> [CALL_RESULT] (id=2ceb5d3f-009f-4f30-a49d-d3018b2267b4)
+{
+  "status": "Accepted"
+}
+```
+
+[DEBUGGING.md](DEBUGGING.md) explains how to read the trace next to the test description, what it does not show, how
+to get from a failure to its cause, and how to save the trace or use it without a terminal (CI).
 
 ## OCSP Responder Validation
 
@@ -274,7 +294,7 @@ Key fields in `config.json`:
 - `CSMS_CP_ACTIONS`, `CSMS_TEST_MODE`
 
 The test runner's settings are in `pytest.ini`. To set up your own CSMS for the tests, follow the
-[setup guide](ChargingPointsConfig.md).
+[setup guide](CSMS_SETUP.md).
 
 
 ## Contributing

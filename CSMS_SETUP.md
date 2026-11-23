@@ -129,9 +129,30 @@ v2g_root_ca.pem  ->  contract_sub_ca.pem  ->  contract_leaf.pem  (CN = EMAID001)
 
 ## Step 7 — Implement the trigger API
 
-In a manual OCTT run, an operator starts CSMS-initiated actions from the CSMS user interface. tzi-OCTT does that over
-HTTP, so **your CSMS has to provide these endpoints**. 179 of the 252 2.0.1 test files and 58 of the 75 1.6 test files
-use them; without the API, those tests fail.
+**OCTT test cases are interactive.** Many of them test a request that the CSMS sends on its own initiative, such as a
+reset, a remote start or a reservation. A CSMS sends such a request only when someone asks it to, so the official test
+case documents mark that moment as a **Manual Action**: a person has to make the CSMS send the request before the
+scenario can go on.
+
+For example, TC_B_20 (Reset Charging Station - Without ongoing transaction):
+
+1. **Manual Action:** "Request the CSMS to reboot the Charging Station with type OnIdle".
+2. The CSMS sends a ResetRequest, and the test station answers Accepted.
+3. The test station reboots: it sends a BootNotification and the status of its connectors.
+
+Step 2 can only happen after someone has done step 1. To keep a human out of the loop, tzi-OCTT does step 1 over HTTP.
+The test sends:
+
+```http
+POST http://localhost:5001/api/octt/2.0.1/CP201_SP1/call/Reset
+Content-Type: application/json
+
+{"type": "OnIdle"}
+```
+
+Your CSMS then sends the ResetRequest, as if a person had asked for the reboot. **So your CSMS has to provide these
+endpoints.** 179 of the 252 2.0.1 test files and 58 of the 75 1.6 test files use them. Without the API, nothing starts
+the CSMS side of those exchanges, and the tests fail.
 
 **Conventions:**
 - Every endpoint is a `POST` with a JSON body (`Content-Type: application/json`) under `CSMS_TRIGGER_ADDRESS`, whose
@@ -145,11 +166,12 @@ use them; without the API, those tests fail.
 
 | Endpoint | Body | What your CSMS does |
 |---|---|---|
-| `call/{Action}` | The OCPP request payload | Sends a CALL with that action and payload to the station. Used 169 times, for the 37 actions listed below |
+| `call/{Action}` | The OCPP request payload | Sends a CALL with that action and payload to the station. 165 of the 252 test files use it, for the 36 actions listed below |
 | `trigger-message` | TriggerMessageRequest payload | Sends TriggerMessage |
 | `update-basic-auth-password` | none | Generates a new Basic Auth password and sets it on the station (SetVariables `SecurityCtrlr.BasicAuthPassword`, A01) |
 | `get-variables` | `{"getVariableData": [...]}` | Sends GetVariablesRequest(s), split by the station's ItemsPerMessageGetVariables |
 | `set-variables` | `{"setVariableData": [...]}` | Sends SetVariablesRequest(s), split by the station's ItemsPerMessageSetVariables |
+| `clear-variable-monitoring` | `{"id": [...]}` | Clears these monitors: sends ClearVariableMonitoringRequest(s), split by the station's ItemsPerMessageClearVariableMonitoring (N06.FR.04). Answer once the station has answered them all. TC_N_18 first has your CSMS read that limit through `get-variables` |
 | `set-items-per-message` | `{"get_variables": n, "set_variables": n, "get_report": n}`, any of them | Records the station's ItemsPerMessage limits. No OCPP message |
 | `set-pending-boot` | `{"pending": true}` or `false` | The station's next BootNotification is answered Pending (`true`) or Accepted (`false`). No OCPP message |
 | `set-security-profile` | `{"security_profile": n}` | Records that the station now uses that profile, as after a completed upgrade, and refuses lower profiles from it. No OCPP message |
@@ -159,7 +181,7 @@ The actions sent through `call/{Action}`:
 > CancelReservation, ChangeAvailability, ClearCache, ClearChargingProfile, ClearDisplayMessage,
 > ClearVariableMonitoring, CustomerInformation, DeleteCertificate, GetBaseReport, GetChargingProfiles,
 > GetCompositeSchedule, GetDisplayMessages, GetInstalledCertificateIds, GetLocalListVersion, GetLog,
-> GetMonitoringReport, GetReport, GetTransactionStatus, GetVariables, InstallCertificate, PublishFirmware,
+> GetMonitoringReport, GetReport, GetTransactionStatus, InstallCertificate, PublishFirmware,
 > RequestStartTransaction, RequestStopTransaction, ReserveNow, Reset, SendLocalList, SetChargingProfile,
 > SetDisplayMessage, SetMonitoringBase, SetMonitoringLevel, SetNetworkProfile, SetVariableMonitoring, SetVariables,
 > TriggerMessage, UnlockConnector, UnpublishFirmware, UpdateFirmware
@@ -213,8 +235,8 @@ listed in the [reference](#reference-all-settings).
 
 - **For a first run, go one test file at a time**, block by block, and fix each failure before moving on. Most early
   failures are setup problems; see [troubleshooting](#troubleshooting).
-- **`--log-messages` prints every OCPP message** the test sends and receives. It writes directly to the terminal
-  (`/dev/tty`). Without a terminal, for example in CI, run pytest under `script -q <logfile> …`.
+- **`--log-messages` prints every OCPP message** the test sends and receives. [DEBUGGING.md](DEBUGGING.md) shows how
+  to read it, and how to use it without a terminal, for example in CI.
 
 ## Step 10 — Reset the stations before a rerun
 
@@ -226,6 +248,9 @@ login.
 ---
 
 ## Troubleshooting
+
+For any failure, run the test alone with `--log-messages` and compare the messages with the test description
+([DEBUGGING.md](DEBUGGING.md)).
 
 | Symptom | Likely cause |
 |---|---|
