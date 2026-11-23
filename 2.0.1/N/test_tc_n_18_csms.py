@@ -30,6 +30,14 @@ Configuration:
     BASIC_AUTH_CP_PASSWORD    - Charge Point password
     CONFIGURED_CONNECTOR_ID   - Connector id (default 1)
     CSMS_ACTION_TIMEOUT       - Seconds to wait for CSMS action (default 30)
+
+Implementation notes:
+    - Steps 1-2: the CSMS is instructed through the trigger API's get-variables, so it reads the limit as a
+      variable of the station. The station reports ItemsPerMessage = 3.
+    - Step 3: one instruction through the trigger API's clear-variable-monitoring, for one more monitor id
+      than the limit (the official test case: "these monitor ids do not have to exist"). The CSMS decides
+      how to split them. The call returns once the CSMS has sent every request and received the answers.
+    - Step 4: the station answers each request with a ClearVariableMonitoringResponse, one result per id.
 """
 import asyncio
 import logging
@@ -49,7 +57,7 @@ from ocpp.v201.enums import (
 
 from tzi_charge_point import TziChargePoint
 from utils import get_basic_auth_headers, build_default_ssl_context
-from trigger import send_call
+from trigger import get_variables, clear_variable_monitoring
 
 logging.basicConfig(level=logging.INFO)
 
@@ -78,7 +86,7 @@ async def test_tc_n_18():
 
     cp = TziChargePoint(cp_id, ws)
 
-    # Set up response for GetVariables: ItemsPerMessage for ClearVariableMonitoring = 3
+    # The station's MonitoringCtrlr.ItemsPerMessage[ClearVariableMonitoring]
     items_per_message = 3
     cp._get_variables_values['MonitoringCtrlr.ItemsPerMessage'] = str(items_per_message)
 
@@ -90,83 +98,33 @@ async def test_tc_n_18():
 
     await cp.send_status_notification(CONNECTOR_ID, ConnectorStatusEnumType.available)
 
-    # Trigger CSMS to send GetVariablesRequest
-    await send_call(cp_id, "GetVariables", {
-        "getVariableData": [{
-            "component": {"name": "MonitoringCtrlr"},
-            "variable": {"name": "ItemsPerMessage", "instance": "ClearVariableMonitoring"},
-            "attributeType": "Actual",
-        }],
-    })
-
-    # Step 1-2: Wait for CSMS to request the ItemsPerMessage variable
+    # Step 1-2: Instruct the CSMS to send a GetVariablesRequest for
+    # MonitoringCtrlr.ItemsPerMessage[ClearVariableMonitoring]; the station answers with the limit
+    await get_variables(cp_id, [{
+        "component": {"name": "MonitoringCtrlr"},
+        "variable": {"name": "ItemsPerMessage", "instance": "ClearVariableMonitoring"},
+    }])
     await asyncio.wait_for(
         cp._received_get_variables.wait(),
         timeout=CSMS_ACTION_TIMEOUT,
     )
-
     assert cp._get_variables_data is not None
     logging.info(f"TC_N_18 step 1-2: GetVariablesRequest received: {cp._get_variables_data}")
 
-    # Step 3-4: Wait for CSMS to send ClearVariableMonitoringRequest(s)
-    # Collect all requests and validate each does not exceed ItemsPerMessage
-    all_ids = []
-    request_count = 0
+    # Step 3: Instruct the CSMS to clear one more monitor than ItemsPerMessage allows.
+    # Step 4: the station answers every ClearVariableMonitoringRequest; the call returns after the last answer.
+    monitor_ids = list(range(1, items_per_message + 2))
+    await clear_variable_monitoring(cp_id, monitor_ids)
 
-    # Trigger CSMS to send first ClearVariableMonitoringRequest
-    await send_call(cp_id, "ClearVariableMonitoring", {"id": [1, 2, 3]})
-
-    await asyncio.wait_for(
-        cp._received_clear_variable_monitoring.wait(),
-        timeout=CSMS_ACTION_TIMEOUT,
-    )
-
-    ids = cp._clear_variable_monitoring_data['id']
-    assert len(ids) <= items_per_message, \
-        f"ClearVariableMonitoringRequest has {len(ids)} ids, exceeds ItemsPerMessage={items_per_message}"
-    all_ids.extend(ids)
-    request_count += 1
-    logging.info(f"TC_N_18 request {request_count}: {len(ids)} ids (limit={items_per_message})")
-
-    # Check for additional ClearVariableMonitoringRequest(s)
-    # Per spec: "Two or more ClearVariableMonitoringRequest" are expected
-    cp._received_clear_variable_monitoring.clear()
-
-    # Trigger CSMS to send second ClearVariableMonitoringRequest
-    await send_call(cp_id, "ClearVariableMonitoring", {"id": [4, 5]})
-
-    await asyncio.wait_for(
-        cp._received_clear_variable_monitoring.wait(),
-        timeout=CSMS_ACTION_TIMEOUT,
-    )
-
-    ids = cp._clear_variable_monitoring_data['id']
-    assert len(ids) <= items_per_message, \
-        f"ClearVariableMonitoringRequest has {len(ids)} ids, exceeds ItemsPerMessage={items_per_message}"
-    all_ids.extend(ids)
-    request_count += 1
-    logging.info(f"TC_N_18 request {request_count}: {len(ids)} ids (limit={items_per_message})")
-
-    # Check for any further requests (optional)
-    cp._received_clear_variable_monitoring.clear()
-    try:
-        await asyncio.wait_for(
-            cp._received_clear_variable_monitoring.wait(),
-            timeout=CSMS_ACTION_TIMEOUT,
-        )
-
-        ids = cp._clear_variable_monitoring_data['id']
+    # Tool validation: two or more ClearVariableMonitoringRequests, none with more than ItemsPerMessage ids
+    requests = cp._clear_variable_monitoring_requests
+    logging.info(f"TC_N_18 step 3-4: {len(requests)} ClearVariableMonitoringRequest(s) for {monitor_ids}: "
+                 f"{requests} (limit={items_per_message})")
+    assert len(requests) >= 2, \
+        f"Expected two or more ClearVariableMonitoringRequests for {len(monitor_ids)} ids, got {len(requests)}"
+    for ids in requests:
         assert len(ids) <= items_per_message, \
             f"ClearVariableMonitoringRequest has {len(ids)} ids, exceeds ItemsPerMessage={items_per_message}"
-        all_ids.extend(ids)
-        request_count += 1
-        logging.info(f"TC_N_18 request {request_count}: {len(ids)} ids (limit={items_per_message})")
-    except asyncio.TimeoutError:
-        logging.info("No additional ClearVariableMonitoringRequest received")
 
-    assert request_count >= 2, \
-        f"Expected at least 2 ClearVariableMonitoringRequests, got {request_count}"
-
-    logging.info(f"TC_N_18 completed: {request_count} request(s), {len(all_ids)} total ids cleared")
     start_task.cancel()
     await ws.close()

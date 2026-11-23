@@ -129,6 +129,24 @@ async def get_variables(station_id, get_variable_data):
     return json.loads(resp.read().decode())
 
 
+async def clear_variable_monitoring(station_id, monitor_ids):
+    """Ask the CSMS to clear these monitors. It sends as many ClearVariableMonitoringRequests as the
+    station's ItemsPerMessageClearVariableMonitoring requires (N06.FR.04), and answers once the station
+    has answered all of them."""
+    url = f"{CSMS_TRIGGER_ADDRESS}/api/octt/2.0.1/{station_id}/clear-variable-monitoring"
+    data = json.dumps({"id": monitor_ids}).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    loop = asyncio.get_event_loop()
+    resp = await loop.run_in_executor(
+        None, lambda: urllib.request.urlopen(req, timeout=30)
+    )
+    return json.loads(resp.read().decode())
+
+
 async def set_variables(station_id, set_variable_data):
     """Send batched SetVariablesRequest(s) respecting ItemsPerMessage limits."""
     url = f"{CSMS_TRIGGER_ADDRESS}/api/octt/2.0.1/{station_id}/set-variables"

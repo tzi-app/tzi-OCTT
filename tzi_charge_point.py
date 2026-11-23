@@ -193,7 +193,8 @@ class TziChargePoint(ChargePoint):
         self._set_monitoring_level_response_status = GenericStatusEnumType.accepted
         self._received_clear_variable_monitoring = asyncio.Event()
         self._clear_variable_monitoring_data = None
-        self._clear_variable_monitoring_response_results = None
+        self._clear_variable_monitoring_requests = []
+        self._clear_variable_monitoring_response_status = ClearMonitoringStatusEnumType.accepted
         self._received_customer_information = asyncio.Event()
         self._customer_information_data = None
         self._customer_information_response_status = CustomerInformationStatusEnumType.accepted
@@ -846,14 +847,12 @@ class TziChargePoint(ChargePoint):
         self._clear_variable_monitoring_data = {
             'id': id,
         }
+        self._clear_variable_monitoring_requests.append(list(id))
         self._received_clear_variable_monitoring.set()
 
-        if self._clear_variable_monitoring_response_results is not None:
-            return call_result.ClearVariableMonitoring(
-                clear_monitoring_result=self._clear_variable_monitoring_response_results
-            )
-
-        results = [ClearMonitoringStatusEnumType.accepted for _ in id]
+        # One ClearMonitoringResult (status and id) per monitor id in the request
+        results = [{'status': self._clear_variable_monitoring_response_status, 'id': monitor_id}
+                   for monitor_id in id]
         return call_result.ClearVariableMonitoring(clear_monitoring_result=results)
 
     @on(Action.customer_information)

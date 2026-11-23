@@ -74,10 +74,8 @@ async def test_tc_n_44():
 
     cp = TziChargePoint(cp_id, ws)
 
-    # Pre-set response to Rejected for all clearing attempts
-    cp._clear_variable_monitoring_response_results = [
-        ClearMonitoringStatusEnumType.rejected,
-    ]
+    # Step 2: answer Rejected for every monitor, so clearMonitoringResult[0].status = Rejected
+    cp._clear_variable_monitoring_response_status = ClearMonitoringStatusEnumType.rejected
 
     start_task = asyncio.create_task(cp.start())
 
