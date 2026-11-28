@@ -91,3 +91,73 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           userinfo> / using HTTP POST | 4. The CSMS responds using HTTP |
         | … | |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from diagnostics import upload_log, validate_upload_location
+from reusable_states.booted import booted
+from trigger import get_log
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_103(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Configuration State: CSMS configured to prevent unauthorised uploading to HTTPS log
+    # location.
+    # Manual Action: Trigger CSMS to GetLogRequest with logType DiagnosticsLog and remoteLocation
+    #                with userinfo for HTTP Basic Authentication
+    # 1. CSMS sends a GetLogRequest
+    # 2. Test System responds with a GetLogResponse with
+    #    - status Accepted
+    cp.set_response('GetLog', status='Accepted')
+    request = await cp.wait_for_request(
+        'GetLog', manual_action=get_log(BASIC_AUTH_CP, 'DiagnosticsLog', scheme='https'))
+    assert request.log_type == 'DiagnosticsLog', \
+        f"Expected GetLogRequest.logType DiagnosticsLog, got {request.log_type}"
+    remote_location = request.log.remote_location
+    # log.remoteLocation must contain a valid URL, specify scheme HTTPS, contain userinfo for HTTP
+    # Basic Authentication, not contain a URL fragment component, and not contain a URL query
+    # component that ends in a slash character ("/")
+    validate_upload_location(remote_location, 'https')
+
+    # 3. The Test System uploads log file to <GetLogRequest.log.remoteLocation of step 1 without
+    #    userinfo> using HTTP POST (errata 2026-09, 6.3.17)
+    # 4. The CSMS responds using HTTP
+    status_code = await upload_log(remote_location, with_userinfo=False)
+    assert status_code == 401, \
+        f"Expected HTTP status code 401 Unauthorized for an upload without userinfo, got {status_code}"
+
+    # 5. The Test System uploads file to <GetLogRequest.log.remoteLocation of step 1> using HTTP
+    #    POST
+    # 6. The CSMS responds using HTTP
+    status_code = await upload_log(remote_location)
+    assert 200 <= status_code < 300, \
+        f"Expected an HTTP status code in the 2xx-range for the upload, got {status_code}"
+
+    # 7.  Test System sends a LogStatusNotificationRequest with
+    #     - status Uploading
+    #     - requestId <GetLogRequest.requestId of step 1>
+    # 8.  CSMS responds with a LogStatusNotificationResponse
+    # 9.  Test System sends a LogStatusNotificationRequest with
+    #     - status Uploaded
+    #     - requestId <GetLogRequest.requestId of step 1>
+    # 10. CSMS responds with a LogStatusNotificationResponse
+    for status in ('Uploading', 'Uploaded'):
+        await cp.send_log_status_notification_request(status, request_id=request.request_id)
+
+    start_task.cancel()

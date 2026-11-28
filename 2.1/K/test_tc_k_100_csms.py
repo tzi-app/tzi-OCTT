@@ -70,3 +70,44 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import charging_profile, request_charging_profile, validate_profile
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_100(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile charging profile with a
+    #                maxOfflineDuration and invalidAfterOfflineDuration set to true
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxDefaultProfile', 'Absolute', 6, maxOfflineDuration=600, invalidAfterOfflineDuration=True))
+
+    validate_profile(request, purpose='TxDefaultProfile', stack_level=None)
+    profile = request.charging_profile
+    assert profile.max_offline_duration is not None, "chargingProfile.maxOfflineDuration must not be omitted"
+    assert profile.invalid_after_offline_duration is True, \
+        f"Expected chargingProfile.invalidAfterOfflineDuration true, " \
+        f"got {profile.invalid_after_offline_duration}"
+
+    start_task.cancel()

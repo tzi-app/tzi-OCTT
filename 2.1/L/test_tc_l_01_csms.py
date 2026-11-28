@@ -91,3 +91,69 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           algorithm is used for signing. Please refer to section [certificate_properties] for more details
           about signature algorithms and computing hash values. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from firmware import (
+    reboot_with_new_firmware,
+    request_firmware_update,
+    signature,
+    signing_certificate,
+)
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_l_01(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a UpdateFirmwareRequest
+    # 2. The Test System responds with a UpdateFirmwareResponse With status Accepted
+    request = await request_firmware_update(cp)
+    assert request.firmware.signing_certificate == signing_certificate(), \
+        f"Expected firmware.signingCertificate <Configured signingCertificate>, " \
+        f"got {request.firmware.signing_certificate}"
+    assert request.firmware.signature == signature(), \
+        f"Expected firmware.signature <Configured signature>, got {request.firmware.signature}"
+
+    # 3.  The Test System sends a FirmwareStatusNotificationRequest. With status Downloading
+    # 4.  The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 5.  ... With status Downloaded
+    # 6.  The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 7.  ... With status SignatureVerified
+    # 8.  The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 9.  ... With status Installing
+    # 10. The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 11. ... With status InstallRebooting
+    # 12. The CSMS responds with a FirmwareStatusNotificationResponse.
+    for status in ('Downloading', 'Downloaded', 'SignatureVerified', 'Installing', 'InstallRebooting'):
+        await cp.send_firmware_status_notification_request(status, request_id=request.request_id)
+
+    # 13. The Test System sends a BootNotificationRequest With reason FirmwareUpdate
+    # 14. The CSMS responds with a BootNotificationResponse - status Accepted
+    # 15. The Test System notifies the CSMS about the current state of all connectors.
+    #     Message: StatusNotificationRequest - connectorStatus Available
+    #     Message: NotifyEventRequest - trigger Delta, actualValue "Available", component.name
+    #              "Connector", variable.name "AvailabilityState"
+    # 16. The CSMS responds accordingly.
+    await reboot_with_new_firmware(cp)
+
+    # 17. The Test System sends a FirmwareStatusNotificationRequest. With status Installed
+    # 18. The CSMS responds with a FirmwareStatusNotificationResponse.
+    await cp.send_firmware_status_notification_request('Installed', request_id=request.request_id)
+
+    start_task.cancel()

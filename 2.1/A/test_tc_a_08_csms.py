@@ -113,3 +113,62 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import asyncio
+import logging
+import os
+import ssl
+
+import pytest
+import websockets
+from websockets.exceptions import InvalidMessage
+
+from charge_point import TziChargePoint21, connect_to_csms
+from security import connect_with_profile, ssl_context_for
+
+TLS_INVALID_CLIENT_CERT = os.environ['TLS_INVALID_CLIENT_CERT']
+TLS_INVALID_CLIENT_KEY = os.environ['TLS_INVALID_CLIENT_KEY']
+SECURITY_PROFILE_3_CP = os.environ['CP21_SP3']
+
+
+@pytest.mark.asyncio
+async def test_tc_a_08():
+    cp_id = SECURITY_PROFILE_3_CP
+
+    # 1-3. TLS handshake, in which the Test System sends the configured invalid client
+    #      certificate: a certificate the CSMS does not know (it is self-signed).
+    # 4.   The CSMS deems the client certificate invalid and terminates the connection.
+    invalid_ctx = ssl_context_for(
+        3, client_cert=TLS_INVALID_CLIENT_CERT, client_key=TLS_INVALID_CLIENT_KEY)
+
+    with pytest.raises((ssl.SSLError, websockets.InvalidStatusCode, ConnectionError, InvalidMessage)):
+        ws = await connect_to_csms(cp_id, ssl_context=invalid_ctx)
+        await ws.close()
+
+    logging.info("CSMS terminated the connection with the invalid client certificate")
+
+    # 5-8. TLS handshake, in which the Test System sends the configured client certificate
+    # 9.   The Test System sends a HTTP upgrade request to the CSMS
+    # 10.  The CSMS upgrades the connection to a (secured) WebSocket connection.
+    ws = await connect_with_profile(cp_id, security_profile=3)
+    try:
+        cp = TziChargePoint21(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
+
+        # 11. The Test System sends a BootNotificationRequest with reason PowerUp, the
+        #     configured model and the configured vendorName
+        # 12. The CSMS responds with a BootNotificationResponse with status Accepted
+        boot_response = await cp.send_boot_notification(reason='PowerUp')
+        assert boot_response.status == 'Accepted', \
+            f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+        # 13. The Test System notifies the CSMS about the current state of all connectors.
+        #     StatusNotificationRequest - connectorStatus Available
+        #     NotifyEventRequest - trigger Delta, actualValue "Available",
+        #                          component.name "Connector", variable.name "AvailabilityState"
+        # 14. The CSMS responds accordingly.
+        await cp.send_all_connectors_status('Available')
+
+        start_task.cancel()
+    finally:
+        await ws.close()

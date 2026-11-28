@@ -70,3 +70,25 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import os
+
+import pytest
+
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP + "Invalid", BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_a_02(connection):
+    # 1. The Test System sends a HTTP upgrade request with an Authorization header:
+    #    Basic <Base64 encoded(<Configured ChargingStationId> + Invalid:<Configured basicAuthPassword>)>
+    # 2. The CSMS validates the username/password combination AND rejects the connection
+    #    upgrade request. With HTTP Basic authentication, that is HTTP 401.
+    assert connection.open == False
+    assert connection.status_code == 401

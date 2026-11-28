@@ -84,3 +84,58 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from smart_charging import (
+    charging_profile,
+    CHARGING_PROFILE_ID,
+    DURATION,
+    only_schedule,
+    request_charging_profile,
+    validate_profile,
+    validate_schedule,
+    validate_validity,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_01(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest with
+    #    - chargingProfile.id <Configured chargingProfileId>
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxDefaultProfile', 'Absolute', 6,
+        validFrom=utc_now_iso(), validTo=utc_now_iso(DURATION)))
+
+    # evseId <Configured evseId>, stackLevel <Configured stackLevel>, chargingProfilePurpose
+    # TxDefaultProfile, chargingProfileKind Absolute
+    validate_profile(request, evse_id=CONFIGURED_EVSE_ID, purpose='TxDefaultProfile', kind='Absolute',
+                     profile_id=CHARGING_PROFILE_ID)
+    # validFrom now, validTo now + <Configured Charging Schedule Duration>
+    validate_validity(request.charging_profile)
+    # startSchedule now, chargingRateUnit <Configured chargingRateUnit>, duration <Configured
+    # duration>, chargingSchedulePeriod.startPeriod 0, .limit 6.0 or 6000.0, .numberPhases
+    # <Configured numberPhases> (or omitted when that is 3)
+    validate_schedule(only_schedule(request), amperes=6, start_schedule='now', duration=True)
+
+    start_task.cancel()

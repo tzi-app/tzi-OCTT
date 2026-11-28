@@ -69,3 +69,77 @@ Tool validations
 Post scenario validations:
     Check that CSMS shows the monitor for AvailabilityState for EVSE #1.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from monitoring import (
+    component_variable,
+    csms_requests_items_per_message,
+    monitoring_data,
+    MONITORING_VARIABLES,
+    request_monitoring_report,
+    validate_component_variable,
+    validate_monitoring_criteria,
+    variable_monitoring,
+)
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_02(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisite: CS has implemented device model monitoring and MonitoringCtrlr.Enabled = true.
+    cp.variables = dict(MONITORING_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Memory State: CSMS requests ClearVariableMonitoring ItemsPerMessage from CS.
+    await csms_requests_items_per_message(cp)
+
+    # Manual Action: Manually instruct CSMS to get a report of monitors for:
+    #     - the variable Power of ChargingStation
+    # 1. CSMS sends GetMonitoringReportRequest
+    # 2. Test System responds with: GetMonitoringReportResponse with:
+    #    - Status EmptyResultSet
+    request = await request_monitoring_report(
+        cp, 'EmptyResultSet', component_variables=[component_variable('ChargingStation', 'Power')],
+        request_id=1)
+    # componentVariable[0].component.name = "ChargingStation", .variable.name = "Power", both
+    # without instance; monitoringCriteria is omitted
+    validate_component_variable(request, 0, 'ChargingStation', 'Power')
+    validate_monitoring_criteria(request)
+
+    # Manual Action: Manually instruct CSMS to get a report of monitors for:
+    #     - the variable AvailabilityState of EVSE #1.
+    # 3. CSMS sends GetMonitoringReportRequest
+    # 4. Test System responds with: GetMonitoringReportResponse with:
+    #    - Status Accepted
+    request = await request_monitoring_report(
+        cp, 'Accepted', component_variables=[component_variable('EVSE', 'AvailabilityState', evse_id=1)],
+        request_id=2)
+    # The componentVariable of this request: component.name = "EVSE", component.evse.id = 1,
+    # variable.name = "AvailabilityState", both without instance; monitoringCriteria is omitted
+    validate_component_variable(request, 0, 'EVSE', 'AvailabilityState', evse_id=1)
+    validate_monitoring_criteria(request)
+
+    # 5. Test System responds with: NotifyMonitoringReportRequest
+    # 6. CSMS sends NotifyMonitoringReportResponse
+    # Step 5 and 6 are repeated as often as needed to report all configuration variables.
+    await cp.send_notify_monitoring_report(request.request_id, seq_no=0, monitor=[
+        monitoring_data('EVSE', 'AvailabilityState', [variable_monitoring(2, 'Delta', 1)], evse_id=1)])
+    # "Check that CSMS shows the monitor for AvailabilityState for EVSE #1" is a check in the CSMS
+    # itself.
+
+    start_task.cancel()

@@ -60,3 +60,66 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.reserved import reserve_now_payload, validate_reserve_now_request
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+CONFIGURED_CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_h_20(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Trigger the CSMS to send a ReserveNowRequest for a specific EVSE.
+    # 1. The CSMS sends a ReserveNowRequest
+    # 2. The Test System responds with a ReserveNowResponse - With status Accepted
+    cp.set_response('ReserveNow', status='Accepted')
+    request = await cp.wait_for_request(
+        'ReserveNow',
+        manual_action=send_call(BASIC_AUTH_CP, 'ReserveNow', reserve_now_payload(
+            evse_id=CONFIGURED_EVSE_ID)))
+    validate_reserve_now_request(request, evse_id=CONFIGURED_EVSE_ID)
+
+    # 3. The Test System notifies the CSMS about the current state of the connector(s) of the
+    #    configured EVSE
+    #    Message: StatusNotificationRequest - with connectorStatus Reserved
+    #    Message: NotifyEventRequest - with trigger Delta, actualValue "Reserved",
+    #             component.name "Connector", variable.name "AvailabilityState"
+    # 4. The CSMS responds accordingly.
+    await cp.send_connector_status('Reserved', evse_id=CONFIGURED_EVSE_ID,
+                                   connector_id=CONFIGURED_CONNECTOR_ID)
+
+    # 5. The Test System notifies the CSMS about the current state of the connector(s) of the
+    #    configured EVSE
+    #    Message: StatusNotificationRequest - with connectorStatus Faulted
+    #    Message: NotifyEventRequest - with trigger Delta, actualValue "Faulted",
+    #             component.name "Connector", variable.name "AvailabilityState"
+    # 6. The CSMS responds accordingly.
+    await cp.send_connector_status('Faulted', evse_id=CONFIGURED_EVSE_ID,
+                                   connector_id=CONFIGURED_CONNECTOR_ID)
+
+    # 7. The Test System sends a ReservationStatusUpdateRequest
+    #    - With reservationUpdateStatus Removed
+    #    - reservationId <id received at step 1>
+    # 8. The CSMS responds with a ReservationStatusUpdateResponse
+    await cp.send_reservation_status_update(request.id, 'Removed')
+
+    start_task.cancel()

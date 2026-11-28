@@ -83,3 +83,64 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.authorized import authorized
+from reusable_states.booted import booted
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from reusable_states.iso15118_smart_charging import (
+    charging_needs,
+    iso15118_smart_charging,
+    negotiate_charging_schedule,
+    notify_ev_charging_schedule,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_57(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State(s): [not printed in the test case] A charging schedule is renegotiated, so
+    # there is an authorized transaction of a connected EV that has a charging schedule: State is
+    # Authorized, EVConnectedPreSession and ISO15118SmartCharging.
+    await authorized(cp)
+    await ev_connected_pre_session(cp)
+    await iso15118_smart_charging(cp)
+
+    # 1. The Test System sends a NotifyEVChargingNeedsRequest. With
+    #    - evseId <Configured evseId>
+    #    - maxScheduleTuples & chargingNeeds <Configured values from mock EV>
+    # 2. The CSMS responds with a NotifyEVChargingNeedsResponse.
+    #    - status Accepted or Processing
+    # 3. The CSMS sends a SetChargingProfileRequest
+    #    Note(s): If NotifyEVChargingNeedsResponseStatus was Processing, the Test System will
+    #    wait 60 seconds for the request
+    #    - evseId <Configured evseId>, chargingProfilePurpose TxProfile, transactionId <Provided
+    #      transactionId from before>
+    # 4. The Test System responds with a SetChargingProfileResponse With
+    #    - status Accepted
+    request = await negotiate_charging_schedule(cp, charging_needs('iso15118-2'))
+
+    # 5. The Test System sends a NotifyEVChargingScheduleRequest. With
+    #    - evseId <Configured evseId>
+    #    - chargingSchedule <ChargingSchedule provided at step 3>
+    # 6. The CSMS responds with a NotifyEVChargingScheduleResponse.
+    #    - status Accepted
+    await notify_ev_charging_schedule(cp, request.charging_profile.charging_schedule[0])
+
+    start_task.cancel()

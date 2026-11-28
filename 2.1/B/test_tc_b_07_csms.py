@@ -54,3 +54,61 @@ Tool validations
 Post scenario validations:
     Manually validate that CSMS has correctly read the requested variables.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from device_model import find_variable
+from reusable_states.booted import booted
+from trigger import get_variables
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+ALLOWED_ATTRIBUTE_TYPES = (None, 'Actual', 'Target', 'MinSet', 'MaxSet')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_07(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    cp.variables = {
+        'OCPPCommCtrlr.OfflineThreshold': '60',
+        'AuthCtrlr.AuthorizeRemoteStart': 'true',
+    }
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Manually request CSMS to get data for OCPPCommCtrlr.OfflineThreshold and
+    #    AuthCtrlr.AuthorizeRemoteStart
+    # 2. Test System responds with: GetVariablesResponse
+    request = await cp.wait_for_request(
+        'GetVariables',
+        manual_action=get_variables(BASIC_AUTH_CP, [
+            {'component': {'name': 'OCPPCommCtrlr'}, 'variable': {'name': 'OfflineThreshold'}},
+            {'component': {'name': 'AuthCtrlr'}, 'variable': {'name': 'AuthorizeRemoteStart'}},
+        ]))
+
+    # One GetVariablesRequest with, in arbitrary order:
+    # - variable.name "OfflineThreshold", component.name "OCPPCommCtrlr"
+    # - variable.name "AuthorizeRemoteStart", component.name "AuthCtrlr"
+    # attributeType is at least absent or Actual, but Target, MinSet, and MaxSet are also allowed
+    for component, variable in (('OCPPCommCtrlr', 'OfflineThreshold'),
+                                ('AuthCtrlr', 'AuthorizeRemoteStart')):
+        get_variable = find_variable(request.get_variable_data, component, variable)
+        assert get_variable is not None, \
+            f"Expected {component}.{variable} in getVariableData, got: {request.get_variable_data}"
+        assert get_variable.attribute_type in ALLOWED_ATTRIBUTE_TYPES, \
+            f"Unexpected attributeType for {component}.{variable}: {get_variable.attribute_type}"
+
+    # "Manually validate that CSMS has correctly read the requested variables" is a check on
+    # the CSMS itself, which this test cannot do.
+
+    start_task.cancel()

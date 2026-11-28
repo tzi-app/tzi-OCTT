@@ -59,3 +59,64 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from trigger import send_call, set_pending_boot
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_31(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: The CSMS is configured to first respond to a BootNotificationRequest with
+    # status Pending or Rejected.
+    await set_pending_boot(BASIC_AUTH_CP, pending=True)
+    try:
+        # 1. The Test System sends a BootNotificationRequest with reason PowerUp, the
+        #    configured model and the configured vendorName
+        # 2. The CSMS responds with a BootNotificationResponse
+        boot_response = await cp.send_boot_notification(reason='PowerUp')
+        assert boot_response.status in ('Pending', 'Rejected'), \
+            f"Expected BootNotificationResponse.status Pending or Rejected, got {boot_response.status}"
+    finally:
+        # The CSMS accepts the station from here on.
+        await set_pending_boot(BASIC_AUTH_CP, pending=False)
+
+    # 3. The CSMS sends a TriggerMessageRequest
+    # 4. The Test System responds with a TriggerMessageResponse with status Accepted
+    trigger_message = await cp.wait_for_request(
+        'TriggerMessage',
+        manual_action=send_call(BASIC_AUTH_CP, 'TriggerMessage',
+                                {'requestedMessage': 'BootNotification'}))
+    assert trigger_message.requested_message == 'BootNotification', \
+        f"Expected requestedMessage BootNotification, got: {trigger_message.requested_message}"
+
+    # 5. The Test System sends a BootNotificationRequest with reason Triggered, the configured
+    #    model and the configured vendorName
+    # 6. The CSMS responds with a BootNotificationResponse
+    boot_response = await cp.send_boot_notification(reason='Triggered')
+    assert boot_response.status == 'Accepted', \
+        f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+    # 7. The Test System notifies the CSMS about the current state of all connectors.
+    #    StatusNotificationRequest - connectorStatus Available
+    #    NotifyEventRequest - trigger Delta, actualValue "Available",
+    #                         component.name "Connector", variable.name "AvailabilityState"
+    # 8. The CSMS responds accordingly.
+    await cp.send_all_connectors_status('Available')
+
+    start_task.cancel()

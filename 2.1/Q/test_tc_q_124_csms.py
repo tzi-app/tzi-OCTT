@@ -224,3 +224,86 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           [notifyevchargingneedsrequest] | This will automatically regulate grid power down to 0 W while
           taking into account the minimum charging/discharging rates of the EV. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.iso15118_20_transaction_just_started import V2X_VARIABLES
+from smart_charging import POWER_FIELDS, request_charging_profile, v2x_profile, validate_periods
+from trigger import set_variables
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# The local load-balancing settings: (instance of V2XLocalLoadBalancing, value). The values
+# are the ones of the tool validation, which has 2000 for the UpperThreshold where the Manual
+# Action has 1000.
+THRESHOLDS = [('UpperThreshold', '2000'), ('LowerThreshold', '-1000'), ('UpperOffset', '200'),
+              ('LowerOffset', '0')]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_q_124(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Configuration State: CS reports V2XChargingCtrlr.SupportedOperationModes that contains
+    # LocalLoadBalancing
+    cp.variables = dict(V2X_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: trigger CSMS to set local load-balancing thresholds:
+    #     - UpperThreshold = 1000, LowerThreshold = -1000
+    #     - UpperOffset = 200, LowerOffset = 0
+    # 1. The CSMS sends a SetVariablesRequest
+    #    Note: CSMS may send these variables in one or multiple requests
+    # 2. The Test System responds with a SetVariablesResponse with for each variable
+    #    component.name V2XChargingCtrlr, component.evse.id 1, variable.name
+    #    V2XLocalLoadBalancing, variable.instance <the setting> and attributeStatus Accepted
+    before = len(cp.requests_of('SetVariables'))
+    await set_variables(BASIC_AUTH_CP, [{
+        'component': {'name': 'V2XChargingCtrlr', 'evse': {'id': 1}},
+        'variable': {'name': 'V2XLocalLoadBalancing', 'instance': instance},
+        'attributeValue': value,
+    } for instance, value in THRESHOLDS])
+    received = [item for request in cp.requests_of('SetVariables')[before:]
+                for item in request.set_variable_data]
+    assert len(received) == len(THRESHOLDS), \
+        f"Expected {len(THRESHOLDS)} variables in the SetVariablesRequest(s), got {len(received)}"
+    for index, (instance, value) in enumerate(THRESHOLDS):
+        item, where = received[index], f"setVariableData[{index}]"
+        assert item.component.name == 'V2XChargingCtrlr', \
+            f"Expected {where}.component.name V2XChargingCtrlr, got {item.component.name}"
+        assert item.component.evse is not None and item.component.evse.id == 1, \
+            f"Expected {where}.component.evse.id 1, got {item.component.evse}"
+        assert item.variable.name == 'V2XLocalLoadBalancing', \
+            f"Expected {where}.variable.name V2XLocalLoadBalancing, got {item.variable.name}"
+        assert item.variable.instance == instance, \
+            f"Expected {where}.variable.instance {instance}, got {item.variable.instance}"
+        assert item.attribute_value == value, \
+            f"Expected {where}.attributeValue {value}, got {item.attribute_value}"
+
+    # CSMS sets a Charging Profile with LocalLoadBalancing
+    # Manual Action: trigger CSMS to set a TxDefaultProfile Charging Profile with
+    #                chargingSchedulePeriod with operationMode LocalLoadBalancing
+    # 3. The CSMS the sends a SetChargingProfileRequest
+    # 4. The Test System responds with a SetChargingProfileResponse with
+    #    - status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, v2x_profile(
+        'TxDefaultProfile', 'Absolute', {'operationMode': 'LocalLoadBalancing'}))
+    assert request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected SetChargingProfileRequest.evseId {CONFIGURED_EVSE_ID}, got {request.evse_id}"
+    # operationMode must be LocalLoadBalancing; the limits, discharge limits, setpoints and
+    # reactive setpoints (also those of L2 and L3) must be <omitted>
+    validate_periods(request, operation_mode='LocalLoadBalancing', omitted=POWER_FIELDS)
+
+    start_task.cancel()

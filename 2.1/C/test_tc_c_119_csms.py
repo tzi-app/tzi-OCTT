@@ -112,3 +112,94 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           CSMS responds with a TransactionEventResponse |
         | … | |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from payment import direct_payment_id_token, fixed_fee_cost_details, new_psp_ref, payment_ctrlr_variables
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_119(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisites: the Test System has PaymentCtrlr.Enabled is true, AuthorizationAmount =
+    # 50.00, PaymentDetails = "CardLast4Digits", SettlementByCSMS is false and
+    # AuthorizeDirectPayment is false.
+    cp.variables = payment_ctrlr_variables(settlement_by_csms=False)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    psp_ref = new_psp_ref()
+    id_token = direct_payment_id_token(psp_ref)
+    transaction_id = cp.session.start_transaction()
+
+    # 1. The Test System sends a TransactionEventRequest with
+    #    - eventType Started
+    #    - idToken <configured PspRef>
+    #    - idToken.type DirectPayment
+    #    - transactionInfo.transactionId <transactionId>
+    #    - idToken.additionalInfo[0].additionalIdToken = <not omitted>
+    #    - idToken.additionalInfo[0].type = CardLast4Digits
+    #    - transactionInfo.transactionLimit.maxCost 50.00
+    # 2. The CSMS responds with a TransactionEventResponse
+    await cp.call(call.TransactionEvent(
+        event_type='Started',
+        timestamp=utc_now_iso(),
+        trigger_reason='Authorized',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'transaction_limit': {'max_cost': 50.00}},
+        id_token=id_token,
+    ))
+
+    # 3. The Test System sends a TransactionEventRequest with
+    #    - eventType Ended
+    #    - idToken <configured PspRef>
+    #    - idToken.type DirectPayment
+    #    - transactionInfo.transactionId <transactionId>
+    #    - transactionInfo.stoppedReason Local and triggerReason StopAuthorized (errata 2026-09,
+    #      6.3.9)
+    #    - costDetails: a fixed fee of 15.00 EUR excluding and 18.15 EUR including tax (type
+    #      MyTax, 21), totalUsage.energy 123, chargingTime 5, idleTime 0, chargingPeriods
+    #      <omitted>
+    # 4. The CSMS responds with a TransactionEventResponse
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='StopAuthorized',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'stopped_reason': 'Local'},
+        id_token=id_token,
+        cost_details=fixed_fee_cost_details(),
+    ))
+
+    # 5. The Test System sends a NotifySettlementRequest with
+    #    - transactionId <transactionId>
+    #    - pspRef <configured PspRef>
+    #    - status Failed
+    #    - settlementTime <not omitted>
+    #    - settlementAmount 18.15
+    #    - receiptUrl <omitted>
+    # 6. The CSMS responds with a NotifySettlementResponse
+    await cp.call(call.NotifySettlement(
+        transaction_id=transaction_id,
+        psp_ref=psp_ref,
+        status='Failed',
+        settlement_time=utc_now_iso(),
+        settlement_amount=18.15,
+    ))
+
+    start_task.cancel()

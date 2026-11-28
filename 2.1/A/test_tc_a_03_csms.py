@@ -73,3 +73,49 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import os
+import random
+import string
+
+import pytest
+from websockets import InvalidStatusCode
+
+from charge_point import connect_to_csms
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+def _generate_random_password(min_len=16, max_len=40):
+    """A randomly chosen identifierString with a sufficiently high entropy, of 16 to 40
+    characters: alpha-numeric characters and the special characters allowed by
+    identifierString."""
+    allowed_chars = string.ascii_letters + string.digits + "*-_=:+|@."
+    while True:
+        length = random.randint(min_len, max_len)
+        password = ''.join(random.choices(allowed_chars, k=length))
+        if password != BASIC_AUTH_CP_PASSWORD:
+            return password
+
+
+async def _expect_http_upgrade_rejected(headers):
+    with pytest.raises(InvalidStatusCode) as exc:
+        connection = await connect_to_csms(BASIC_AUTH_CP, headers=headers)
+        await connection.close()
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tc_a_03():
+    # 1. The Test System sends a HTTP upgrade request without an Authorization header.
+    # 2. The CSMS rejects the connection upgrade request.
+    await _expect_http_upgrade_rejected(headers={})
+
+    # 3. The Test System sends a HTTP upgrade request with an Authorization header:
+    #    Basic <Base64 encoded(<Configured ChargingStationId>:<randomly chosen identifierString>)>
+    # 4. The CSMS validates the username/password combination AND rejects the connection
+    #    upgrade request.
+    invalid_headers = get_basic_auth_headers(BASIC_AUTH_CP, _generate_random_password())
+    await _expect_http_upgrade_rejected(headers=invalid_headers)

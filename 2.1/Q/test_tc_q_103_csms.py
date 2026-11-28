@@ -136,3 +136,75 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
         (Q01.FR.02) The field idToken is provided (again) with the EVCCID in
         idToken.additionalInfo.additionalIdToken .
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.iso15118_20_transaction_just_started import (
+    iso15118_20_transaction_just_started,
+    V2X_VARIABLES,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# The energy transfers that the mock EV supports
+AVAILABLE_ENERGY_TRANSFER = ['AC_single_phase', 'AC_two_phase', 'AC_three_phase', 'AC_BPT',
+                             'AC_BPT_DER', 'AC_DER']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_q_103(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports ISO 15118-20 and V2X.
+    cp.variables = dict(V2X_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is ISO15118-20 transaction just started exposing
+    #                 <allowedEnergyTransferModes> and <transactionId>
+    allowed_energy_transfer_modes, _ = await iso15118_20_transaction_just_started(cp)
+
+    # Agree on energy transfer mode
+    # 1. Test System sends a NotifyEVChargingNeedsRequest with
+    #    - evseId <Configured evseId>
+    #    - chargingNeeds.requestedEnergyTransfer one different than mentioned in
+    #      <allowedEnergyTransferModes> or if omitted AC_BPT
+    #    - chargingNeeds.availableEnergyTransfer [AC_single_phase, AC_two_phase, AC_three_phase,
+    #      AC_BPT, AC_BPT_DER, AC_DER]
+    #    - chargingNeeds.controlMode ScheduledControl
+    #    - chargingNeeds.v2xChargingParameters.maxChargePower 1234W
+    #    - chargingNeeds.v2xChargingParameters.maxDischargePower 0W
+    # 2. CSMS SHALL respond with a NotifyEVChargingNeedsResponse
+    requested = 'AC_BPT'
+    if allowed_energy_transfer_modes:
+        not_allowed = [mode for mode in AVAILABLE_ENERGY_TRANSFER
+                       if mode not in allowed_energy_transfer_modes]
+        assert not_allowed, \
+            f"The CSMS allows every energy transfer of the mock EV: {allowed_energy_transfer_modes}"
+        requested = not_allowed[0]
+    response = await cp.call(call.NotifyEVChargingNeeds(
+        evse_id=CONFIGURED_EVSE_ID,
+        charging_needs={
+            'requested_energy_transfer': requested,
+            'available_energy_transfer': AVAILABLE_ENERGY_TRANSFER,
+            'control_mode': 'ScheduledControl',
+            'v2x_charging_parameters': {'max_charge_power': 1234, 'max_discharge_power': 0},
+        },
+    ))
+    assert response.status == 'Rejected', \
+        f"Expected NotifyEVChargingNeedsResponse.status Rejected for the energy transfer {requested}, " \
+        f"got {response.status}"
+
+    start_task.cancel()

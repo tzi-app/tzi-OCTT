@@ -76,3 +76,85 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           from step 1> |
         | Post scenario validations: / - N/a |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from authorization import set_master_pass_group_id, validate_id_token_info
+from charge_point import CONFIGURED_NUMBER_OF_EVSES, ChargingSession, TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+VALID_ID_TOKEN = {'id_token': os.environ['VALID_ID_TOKEN'], 'type': os.environ['VALID_ID_TOKEN_TYPE']}
+VALID_ID_TOKEN_2 = {'id_token': os.environ['VALID_ID_TOKEN_2'], 'type': os.environ['VALID_ID_TOKEN_TYPE_2']}
+# Memory State: An idToken with the MasterPass as GroupId is configured
+MASTERPASS_ID_TOKEN = {'id_token': os.environ['MASTERPASS_ID_TOKEN'],
+                       'type': os.environ['MASTERPASS_ID_TOKEN_TYPE']}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_48(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State(s): State is EnergyTransferStarted for all EVSE. The first EVSE charges
+    # with the valid idToken, the others with valid idToken2.
+    sessions = []
+    for evse_id in range(1, CONFIGURED_NUMBER_OF_EVSES + 1):
+        token = VALID_ID_TOKEN if evse_id == 1 else VALID_ID_TOKEN_2
+        session = ChargingSession()
+        await energy_transfer_started(
+            cp, evse_id=evse_id, connector_id=CONFIGURED_CONNECTOR_ID,
+            id_token=token['id_token'], id_token_type=token['type'], session=session)
+        sessions.append(session)
+
+    # Errata 2026-09 (6.3.1), new steps 1-2: the CSMS sets the masterPassGroupId with a
+    # SetVariablesRequest. The steps below are the steps 3-6 of the errata.
+    master_pass_group_id = await set_master_pass_group_id(cp)
+
+    # 1. The Test System sends an AuthorizeRequest with
+    #    - idToken.idToken <Configured valid_idtoken_idtoken>
+    #    - idToken.type <Configured valid_idtoken_type>
+    # 2. The CSMS responds with an AuthorizeResponse
+    #    The test case has the masterPassGroupId as the groupIdToken of this idToken: the
+    #    valid idToken is configured with the MasterPass as its GroupId.
+    response = await cp.call(call.Authorize(id_token=VALID_ID_TOKEN))
+    validate_id_token_info('AuthorizeResponse', response.id_token_info,
+                           status='Accepted', group_id=master_pass_group_id)
+
+    # 3. The Test System sends a TransactionEventRequest with
+    #    - transactionInfo.stoppedReason MasterPass
+    #    - idToken.idToken <Configured masterpass_idtoken_idtoken>
+    #    - idToken.type <Configured masterpass_idtoken_type>
+    #    - eventType Ended
+    #    for the one transaction the user selected to stop in the User Interface
+    # 4. The CSMS responds with a TransactionEventResponse
+    session = sessions[0]
+    response = await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='StopAuthorized',
+        seq_no=session.next_seq_no(),
+        transaction_info={
+            'transaction_id': session.transaction_id,
+            'stopped_reason': 'MasterPass',
+        },
+        id_token=MASTERPASS_ID_TOKEN,
+    ))
+    validate_id_token_info('TransactionEventResponse', response.id_token_info,
+                           status='Accepted', group_id=master_pass_group_id)
+
+    start_task.cancel()

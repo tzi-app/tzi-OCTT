@@ -135,3 +135,76 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import asyncio
+import logging
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from security import (
+    ACCEPTABLE_TLS_VERSIONS,
+    assert_tls12_ciphers_supported,
+    connect_with_profile,
+    csms_host,
+    validate_server_certificate,
+)
+from utils import get_tls_info
+
+SECURITY_PROFILE_2_CP = os.environ['CP21_SP2']
+SECURITY_PROFILE_3_CP = os.environ['CP21_SP3']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("security_profile", [2, 3])
+async def test_tc_a_04(security_profile):
+    cp_id = SECURITY_PROFILE_2_CP if security_profile == 2 else SECURITY_PROFILE_3_CP
+
+    # Step 3 validation, cipher suites (A00.FR.318). A handshake negotiates one suite, so
+    # each required TLS 1.2 suite gets a TLS handshake of its own: steps 1-4 with the step 3
+    # validations, after which the connection is terminated before any HTTP upgrade. These
+    # handshakes run before the connection that goes through steps 1-10.
+    await assert_tls12_ciphers_supported(security_profile, validate_certificate=True)
+
+    # 1-4. TLS handshake. The client certificate is only sent when the CSMS uses security
+    #      profile 3.
+    # 5.   The Test System sends a HTTP upgrade request to the CSMS. It only contains a
+    #      username/password combination when the CSMS uses security profile 2.
+    # 6.   The CSMS upgrades the connection to a (secured) WebSocket connection.
+    ws = await connect_with_profile(cp_id, security_profile)
+    try:
+        # Step 3 validations on this handshake
+        tls_info = get_tls_info(ws)
+        assert tls_info is not None, "TLS info should be available on a WSS connection"
+
+        # The CSMS must use TLS version 1.2 or above
+        assert tls_info['tls_version'] in ACCEPTABLE_TLS_VERSIONS, \
+            f"TLS version must be 1.2 or above, got {tls_info['tls_version']}"
+
+        # Server certificate: key size, X.509 in PEM, serial number, commonName is the FQDN
+        common_name, serial, key_size = validate_server_certificate(
+            tls_info['peer_cert'], tls_info['peer_cert_der'], csms_host())
+        logging.info(f"TLS: version={tls_info['tls_version']}, cipher={tls_info['cipher'][0]}, "
+                     f"key_size={key_size}, CN={common_name}, serial={serial}")
+
+        cp = TziChargePoint21(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
+
+        # 7. The Test System sends a BootNotificationRequest with reason PowerUp, the
+        #    configured model and the configured vendorName
+        # 8. The CSMS responds with a BootNotificationResponse with status Accepted
+        boot_response = await cp.send_boot_notification(reason='PowerUp')
+        assert boot_response.status == 'Accepted', \
+            f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+        # 9.  The Test System notifies the CSMS about the current state of all connectors.
+        #     StatusNotificationRequest - connectorStatus Available
+        #     NotifyEventRequest - trigger Delta, actualValue "Available",
+        #                          component.name "Connector", variable.name "AvailabilityState"
+        # 10. The CSMS responds accordingly.
+        await cp.send_all_connectors_status('Available')
+
+        start_task.cancel()
+    finally:
+        await ws.close()

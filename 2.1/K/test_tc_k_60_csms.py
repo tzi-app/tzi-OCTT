@@ -76,3 +76,56 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from smart_charging import (
+    charging_profile,
+    request_charging_profile,
+    validate_part_2_requirements,
+    validate_profile,
+    validate_start_schedule_for_kind,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_60(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse With status is Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxProfile', 'Relative', 6, duration=False, transactionId=transaction_id))
+
+    # chargingProfilePurpose is TxProfile, evseId is <Configured evseId>, transactionId
+    # <Generated transactionId>, chargingProfileKind is Relative OR Absolute
+    validate_profile(request, evse_id=CONFIGURED_EVSE_ID, purpose='TxProfile',
+                     kind=('Relative', 'Absolute'), stack_level=None, transaction_id=transaction_id)
+    # If chargingProfileKind is Relative then chargingSchedule.startSchedule must be omitted. If
+    # it is Absolute then it must NOT be omitted.
+    validate_start_schedule_for_kind(request.charging_profile)
+    # The received Charging Profile must comply with the requirements defined at part 2
+    # specification.
+    validate_part_2_requirements(request.charging_profile, evse_id=request.evse_id)
+
+    start_task.cancel()

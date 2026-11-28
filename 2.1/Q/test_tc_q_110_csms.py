@@ -71,3 +71,76 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from smart_charging import charging_profile, request_charging_profile
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# A chargingProfileId that the CSMS has not sent: <unknown chargingProfileId>
+UNKNOWN_CHARGING_PROFILE_ID = 987654
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_q_110(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile dynamic charging profile to the
+    #                CS with
+    #     - dynUpdateInterval 15
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxDefaultProfile', 'Dynamic', 16, duration=False, dynUpdateInterval=15,
+        dynUpdateTime=utc_now_iso()))
+    profile = request.charging_profile
+    assert profile.charging_profile_kind == 'Dynamic', \
+        f"Expected chargingProfile.chargingProfileKind Dynamic, got {profile.charging_profile_kind}"
+    assert profile.dyn_update_interval == 15, \
+        f"Expected chargingProfile.dynUpdateInterval 15, got {profile.dyn_update_interval}"
+    assert profile.dyn_update_time is not None, "chargingProfile.dynUpdateTime must not be omitted"
+    assert len(profile.charging_schedule) == 1, \
+        f"chargingProfile.chargingSchedule must be size = 1, got {len(profile.charging_schedule)}"
+    periods = profile.charging_schedule[0].charging_schedule_period
+    assert len(periods) == 1, \
+        f"chargingSchedule[0].chargingSchedulePeriod must be size = 1, got {len(periods)}"
+    assert periods[0].start_period == 0, \
+        f"Expected chargingSchedule[0].chargingSchedulePeriod[0].startPeriod 0, got {periods[0].start_period}"
+
+    # 3. The Test System sends a PullDynamicScheduleUpdateRequest with
+    #    - chargingProfileId <unknown chargingProfileId>
+    # 4. The CSMS responds with a PullDynamicScheduleUpdateResponse
+    response = await cp.call(call.PullDynamicScheduleUpdate(
+        charging_profile_id=UNKNOWN_CHARGING_PROFILE_ID))
+    assert response.status == 'Rejected', \
+        f"Expected PullDynamicScheduleUpdateResponse.status Rejected, got {response.status}"
+
+    # 5. The Test System sends a PullDynamicScheduleUpdateRequest with
+    #    - chargingProfileId <SetChargingProfileRequest.chargingProfile.id from step 1>
+    # 6. The CSMS responds with a PullDynamicScheduleUpdateResponse
+    response = await cp.call(call.PullDynamicScheduleUpdate(charging_profile_id=profile.id))
+    assert response.status == 'Accepted', \
+        f"Expected PullDynamicScheduleUpdateResponse.status Accepted, got {response.status}"
+    assert response.schedule_update is not None, \
+        "PullDynamicScheduleUpdateResponse.scheduleUpdate must not be omitted"
+    assert any(value is not None for value in response.schedule_update.values()), \
+        "PullDynamicScheduleUpdateResponse.scheduleUpdate must at least have a single field set"
+
+    start_task.cancel()

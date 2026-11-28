@@ -37,3 +37,42 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import trigger_message
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_f_18(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a TriggerMessageRequest
+    # 2. The Test System responds with a TriggerMessageResponse with status Accepted
+    cp.set_response('TriggerMessage', status='Accepted')
+    request = await cp.wait_for_request(
+        'TriggerMessage', manual_action=trigger_message(BASIC_AUTH_CP, 'FirmwareStatusNotification'))
+    assert request.requested_message == 'FirmwareStatusNotification', \
+        f"Expected TriggerMessageRequest.requestedMessage FirmwareStatusNotification, " \
+        f"got {request.requested_message}"
+
+    # 3. The Test System sends a FirmwareStatusNotificationRequest with status Idle
+    # 4. The CSMS responds with a FirmwareStatusNotificationResponse
+    await cp.send_firmware_status_notification_request(status='Idle')
+
+    start_task.cancel()

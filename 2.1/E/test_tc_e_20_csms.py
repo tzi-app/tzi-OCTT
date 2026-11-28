@@ -34,3 +34,38 @@ N/a
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_suspended import energy_transfer_suspended
+from reusable_states.ev_disconnected import ev_disconnected
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_20(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferSuspended
+    await energy_transfer_suspended(cp)
+
+    # 1. Execute Reusable State EVDisconnected
+    #    The cable is disconnected at the EV side while the energy transfer is suspended: the
+    #    state is executed from here, and not from EVConnectedPostSession.
+    await ev_disconnected(cp, from_current_state=True)
+
+    start_task.cancel()

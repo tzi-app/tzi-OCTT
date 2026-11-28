@@ -52,3 +52,60 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+LOCAL_LIST_VERSION = int(os.environ['LOCAL_LIST_VERSION'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_d_02(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    cp.local_list_version = LOCAL_LIST_VERSION
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a Local Authorization list to the Charging
+    #                Station with type Differential and some idTokens in the message
+    # 1. The CSMS sends a GetLocalListVersionRequest
+    # 2. The Test System responds with a GetLocalListVersionResponse with versionNumber 1
+    await cp.wait_for_request(
+        'GetLocalListVersion', manual_action=send_call(BASIC_AUTH_CP, 'GetLocalListVersion'))
+
+    # 3. The CSMS sends a SendLocalListRequest
+    # 4. The Test System responds with a SendLocalListResponse with status Accepted
+    request = await cp.wait_for_request(
+        'SendLocalList',
+        manual_action=send_call(BASIC_AUTH_CP, 'SendLocalList', {
+            'versionNumber': LOCAL_LIST_VERSION + 1,
+            'updateType': 'Differential',
+            'localAuthorizationList': [
+                {
+                    'idToken': {'idToken': 'D001001', 'type': 'Central'},
+                    'idTokenInfo': {'status': 'Accepted'},
+                },
+            ],
+        }))
+
+    assert request.update_type == 'Differential', \
+        f"Expected updateType Differential, got: {request.update_type}"
+    assert request.version_number > LOCAL_LIST_VERSION, \
+        f"Expected versionNumber bigger than the {LOCAL_LIST_VERSION} of the Test System, " \
+        f"got: {request.version_number}"
+    assert request.local_authorization_list, "Expected a localAuthorizationList that is not empty"
+
+    start_task.cancel()

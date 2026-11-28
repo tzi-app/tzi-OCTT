@@ -88,3 +88,55 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import CallErrorResponse, TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    charging_profile,
+    NUMBER_PHASES,
+    only_schedule,
+    request_charging_profile,
+    validate_profile,
+    validate_schedule,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_15(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest with: evseId <Configured evseId>, stackLevel
+    #    <Configured stackLevel>, chargingProfilePurpose TxDefaultProfile, chargingProfileKind
+    #    Absolute, startSchedule <Not omitted>, chargingRateUnit <Configured ChargingRateUnit>,
+    #    chargingSchedulePeriod.startPeriod 0, duration <Configured duration>,
+    #    chargingSchedulePeriod.limit 6.0 or 6000.0 and .numberPhases <Configured numberPhases>
+    # 2. The Test System responds with RPC Framework: CALLERROR: NotSupported.
+    request = await request_charging_profile(
+        cp, CONFIGURED_EVSE_ID, charging_profile('TxDefaultProfile', 'Absolute', 6),
+        status=CallErrorResponse('NotSupported', 'The Charging Station does not support smart charging', {}))
+
+    validate_profile(request, evse_id=CONFIGURED_EVSE_ID, purpose='TxDefaultProfile', kind='Absolute')
+    schedule = only_schedule(request)
+    validate_schedule(schedule, amperes=6, start_schedule=True, duration=True, number_phases=False)
+    # chargingSchedulePeriod.numberPhases <Configured numberPhases>
+    assert schedule.charging_schedule_period[0].number_phases == NUMBER_PHASES, \
+        f"Expected chargingSchedulePeriod.numberPhases {NUMBER_PHASES}, " \
+        f"got {schedule.charging_schedule_period[0].number_phases}"
+
+    start_task.cancel()

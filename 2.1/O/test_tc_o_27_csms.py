@@ -37,3 +37,48 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from display_messages import display_message, request_display_message
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_o_27(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # 1. The CSMS sends a SetDisplayMessageRequest
+    # 2. The Test System responds with a SetDisplayMessageResponse with status Accepted
+    start_date_time = utc_now_iso(60)
+    request = await request_display_message(
+        cp, display_message(transactionId=transaction_id, startDateTime=start_date_time))
+    message = request.message
+    assert message.state is None, f"message.state must be omitted, got {message.state}"
+    assert message.start_date_time == start_date_time, \
+        f"Expected message.startDateTime {start_date_time}, got {message.start_date_time}"
+    assert message.end_date_time is None, \
+        f"message.endDateTime must be omitted, got {message.end_date_time}"
+    assert message.transaction_id == transaction_id, \
+        f"Expected message.transactionId {transaction_id}, got {message.transaction_id}"
+
+    start_task.cancel()

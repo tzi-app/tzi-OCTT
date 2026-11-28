@@ -56,3 +56,51 @@ Tool validations
 Post scenario validations:
     Manually validate that CSMS has correctly read the requested variables.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from device_model import find_variable
+from reusable_states.booted import booted
+from trigger import get_variables
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_06(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    cp.variables = {'OCPPCommCtrlr.OfflineThreshold': '60'}
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Manually request CSMS to get data for OCPPCommCtrlr.OfflineThreshold
+    # 2. Test System responds with: GetVariablesResponse
+    request = await cp.wait_for_request(
+        'GetVariables',
+        manual_action=get_variables(BASIC_AUTH_CP, [
+            {'component': {'name': 'OCPPCommCtrlr'}, 'variable': {'name': 'OfflineThreshold'}},
+        ]))
+
+    # getVariableData (in arbitrary order): variable.name "OfflineThreshold",
+    # component.name "OCPPCommCtrlr"
+    get_variable = find_variable(request.get_variable_data, 'OCPPCommCtrlr', 'OfflineThreshold')
+    assert get_variable is not None, \
+        f"Expected OCPPCommCtrlr.OfflineThreshold in getVariableData, got: {request.get_variable_data}"
+    # attributeType is at least absent or Actual, but Target, MinSet, and MaxSet are also allowed
+    assert get_variable.attribute_type in (None, 'Actual', 'Target', 'MinSet', 'MaxSet'), \
+        f"Unexpected attributeType: {get_variable.attribute_type}"
+
+    # "Manually validate that CSMS has correctly read the requested variables" is a check on
+    # the CSMS itself, which this test cannot do.
+
+    start_task.cancel()

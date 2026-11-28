@@ -31,3 +31,34 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_50(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The Test System sends a ClearedChargingLimitRequest with
+    #    - chargingLimitSource EMS
+    # 2. The CSMS responds with a ClearedChargingLimitResponse
+    await cp.call(call.ClearedChargingLimit(charging_limit_source='EMS'))
+
+    start_task.cancel()

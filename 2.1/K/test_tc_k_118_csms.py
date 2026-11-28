@@ -47,3 +47,58 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_118(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports priority charging.
+    cp.variables = {'SmartChargingCtrlr.SupportedAdditionalPurposes': 'PriorityCharging'}
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # Manual Action: Request the CSMS to use priority charging for the transaction
+    # 1. The CSMS sends a UsePriorityChargingRequest
+    # 2. The Test System responds with a UsePriorityChargingResponse with
+    #    - status Accepted
+    cp.set_response('UsePriorityCharging', status='Accepted')
+    request = await cp.wait_for_request(
+        'UsePriorityCharging',
+        manual_action=send_call(BASIC_AUTH_CP, 'UsePriorityCharging', {
+            'transactionId': transaction_id,
+            'activate': True,
+        }))
+    assert request.transaction_id == transaction_id, \
+        f"Expected UsePriorityChargingRequest.transactionId {transaction_id}, got {request.transaction_id}"
+    assert request.activate is True, \
+        f"Expected UsePriorityChargingRequest.activate true, got {request.activate}"
+
+    # 3. The Test System sends a NotifyPriorityChargingRequest with
+    #    - transactionId <transactionId>
+    #    - activated true
+    # 4. The CSMS responds with a NotifyPriorityChargingResponse
+    await cp.call(call.NotifyPriorityCharging(transaction_id=transaction_id, activated=True))
+
+    start_task.cancel()

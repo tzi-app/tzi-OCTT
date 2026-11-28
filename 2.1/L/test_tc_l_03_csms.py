@@ -95,3 +95,78 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           algorithm is used for signing. Please refer to section [certificate_properties] for more details
           about signature algorithms and computing hash values. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from firmware import (
+    reboot_with_new_firmware,
+    request_firmware_update,
+    SCHEDULE_DELAY,
+    seconds_until,
+)
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_l_03(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Prerequisite: The CSMS configuration firmware retrieveDateTime needs to be set to a future
+    # dateTime.
+    # 1. The CSMS sends a UpdateFirmwareRequest
+    # 2. The Test System responds with a UpdateFirmwareResponse - With status Accepted
+    request = await request_firmware_update(cp, retrieve_in=SCHEDULE_DELAY)
+    retrieve_date_time = request.firmware.retrieve_date_time
+    assert seconds_until(retrieve_date_time) > 0, \
+        f"Expected firmware.retrieveDateTime to be a dateTime in the future, got {retrieve_date_time}"
+
+    # 3. The Test System sends a FirmwareStatusNotificationRequest. - With status
+    #    DownloadScheduled
+    # 4. The CSMS responds with a FirmwareStatusNotificationResponse.
+    await cp.send_firmware_status_notification_request(
+        'DownloadScheduled', request_id=request.request_id)
+
+    # 5.  The Test System sends a FirmwareStatusNotificationRequest. - With status Downloading
+    #     Note(s): This step will be executed after the given retrieveDateTime from step 1 has
+    #     been reached.
+    # 6.  The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 7.  ... - With status Downloaded
+    # 8.  The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 9.  ... - With status SignatureVerified
+    # 10. The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 11. ... - With status Installing
+    # 12. The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 13. ... - With status InstallRebooting
+    # 14. The CSMS responds with a FirmwareStatusNotificationResponse.
+    await asyncio.sleep(max(0.0, seconds_until(retrieve_date_time)))
+    for status in ('Downloading', 'Downloaded', 'SignatureVerified', 'Installing', 'InstallRebooting'):
+        await cp.send_firmware_status_notification_request(status, request_id=request.request_id)
+
+    # 15. The Test System sends a BootNotificationRequest - With reason FirmwareUpdate
+    # 16. The CSMS responds with a BootNotificationResponse - status Accepted
+    # 17. The Test System notifies the CSMS about the current state of all connectors.
+    #     Message: StatusNotificationRequest - connectorStatus Available
+    #     Message: NotifyEventRequest - trigger Delta, actualValue "Available", component.name
+    #              "Connector", variable.name "AvailabilityState"
+    # 18. The CSMS responds accordingly.
+    await reboot_with_new_firmware(cp)
+
+    # 19. The Test System sends a FirmwareStatusNotificationRequest. - With status Installed
+    # 20. The CSMS responds with a FirmwareStatusNotificationResponse.
+    await cp.send_firmware_status_notification_request('Installed', request_id=request.request_id)
+
+    start_task.cancel()

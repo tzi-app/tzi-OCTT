@@ -57,3 +57,70 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from certificates import certificate_hash_data_chain
+from charge_point import TziChargePoint21
+from ocpp_messages import to_ocpp
+from reusable_states.booted import booted
+from reusable_states.certificate_installed import certificate_installed
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_m_20(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Note(s): Steps 1 - 5 will be repeated for each hash algorithm (SHA256, SHA384, SHA512).
+    for hash_algorithm in ('SHA256', 'SHA384', 'SHA512'):
+        # 1. CertificateInstalled with certificateType CSMSRootCertificate.
+        await certificate_installed(cp, 'CSMSRootCertificate')
+
+        # Manual Action: Request the CSMS to send a DeleteCertificateRequest.
+        # 2. The CSMS sends a GetInstalledCertificateIdsRequest
+        # 3. The Test System responds with a GetInstalledCertificateIdsResponse
+        #    - With status is Accepted
+        #    - certificateHashDataChain[0].certificateType is CSMSRootCertificate
+        #    - certificateHashDataChain[0].certificateHashData.hashAlgorithm is the hash
+        #      algorithm of this round
+        installed = certificate_hash_data_chain('CSMSRootCertificate', hash_algorithm)
+        cp.set_response('GetInstalledCertificateIds', status='Accepted',
+                        certificate_hash_data_chain=[installed])
+        request = await cp.wait_for_request(
+            'GetInstalledCertificateIds',
+            manual_action=send_call(BASIC_AUTH_CP, 'GetInstalledCertificateIds',
+                                    {'certificateType': ['CSMSRootCertificate']}))
+        # certificateType contains CSMSRootCertificate OR is omitted.
+        assert request.certificate_type is None or 'CSMSRootCertificate' in request.certificate_type, \
+            f"Expected GetInstalledCertificateIdsRequest.certificateType with CSMSRootCertificate, " \
+            f"or omitted, got {request.certificate_type}"
+
+        # 4. The CSMS sends a DeleteCertificateRequest
+        # 5. The Test System responds with a DeleteCertificateResponse
+        #    - With status is Accepted
+        hash_data = installed['certificate_hash_data']
+        cp.set_response('DeleteCertificate', status='Accepted')
+        request = await cp.wait_for_request(
+            'DeleteCertificate',
+            manual_action=send_call(BASIC_AUTH_CP, 'DeleteCertificate', to_ocpp(
+                'DeleteCertificateRequest', {'certificate_hash_data': hash_data})))
+        # certificateHashData is <Returned certificateHashData at Step 3>.
+        assert dict(request.certificate_hash_data) == hash_data, \
+            f"Expected DeleteCertificateRequest.certificateHashData {hash_data}, " \
+            f"got {dict(request.certificate_hash_data)}"
+
+    start_task.cancel()

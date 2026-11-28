@@ -36,3 +36,39 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from display_messages import display_message, request_display_message, validate_message
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_o_26(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a SetDisplayMessageRequest with a Normal Cycle
+    #                priority.
+    # 1. The CSMS sends a SetDisplayMessageRequest
+    # 2. The Test System responds with a SetDisplayMessageResponse with status Rejected
+    request = await request_display_message(
+        cp, display_message(priority='NormalCycle'), status='Rejected')
+    # message.id <Generated Id>, message.priority <Configured Priority>: the Normal Cycle priority
+    # of the Manual Action
+    validate_message(request, priority='NormalCycle')
+
+    start_task.cancel()

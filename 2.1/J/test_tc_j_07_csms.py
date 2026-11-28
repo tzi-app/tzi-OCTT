@@ -37,3 +37,35 @@ N/a
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from metering import EnergyMeter
+from reusable_states.booted import booted
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_j_07(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Execute Reusable State EVConnectedPreSession
+    #    - The TransactionEventRequest contains the MeterValue field.
+    #    - sampledValue.context is Transaction.Begin
+    await ev_connected_pre_session(cp, meter_value=[EnergyMeter().meter_value('Transaction.Begin')])
+
+    start_task.cancel()

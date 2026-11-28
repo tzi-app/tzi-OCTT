@@ -82,3 +82,51 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    charging_profile,
+    CHARGING_PROFILE_ID,
+    only_schedule,
+    request_charging_profile,
+    validate_profile,
+    validate_schedule,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_10(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest with
+    #    - chargingProfile.id <Configured chargingProfileId>
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(
+        cp, 0, charging_profile('TxDefaultProfile', 'Absolute', 6))
+
+    # evseId 0, stackLevel <Configured stackLevel>, chargingProfilePurpose TxDefaultProfile,
+    # chargingProfileKind Absolute
+    validate_profile(request, evse_id=0, purpose='TxDefaultProfile', kind='Absolute',
+                     profile_id=CHARGING_PROFILE_ID)
+    # startSchedule <Not omitted>, chargingRateUnit <Configured ChargingRateUnit>,
+    # chargingSchedulePeriod.startPeriod 0, duration <Configured duration>, .limit 6.0 or 6000.0,
+    # .numberPhases <Configured numberPhases> (or omitted when that is 3)
+    validate_schedule(only_schedule(request), amperes=6, start_schedule=True, duration=True)
+
+    start_task.cancel()

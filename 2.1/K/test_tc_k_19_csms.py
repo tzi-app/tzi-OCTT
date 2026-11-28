@@ -72,3 +72,54 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    charging_profile,
+    only_schedule,
+    RECURRENCY_KIND,
+    request_charging_profile,
+    validate_profile,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_19(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with
+    #    - status Accepted
+    request = await request_charging_profile(
+        cp, CONFIGURED_EVSE_ID,
+        charging_profile('TxDefaultProfile', 'Recurring', 6, recurrencyKind=RECURRENCY_KIND))
+
+    # evseId <Configured evseId>, stackLevel <Configured stackLevel>, chargingProfilePurpose
+    # TxDefaultProfile, chargingProfileKind Recurring
+    validate_profile(request, evse_id=CONFIGURED_EVSE_ID, purpose='TxDefaultProfile', kind='Recurring')
+    # chargingSchedulePeriod.startPeriod 0
+    start_period = only_schedule(request).charging_schedule_period[0].start_period
+    assert start_period == 0, f"Expected chargingSchedulePeriod.startPeriod 0, got {start_period}"
+    # recurrencyKind <Configured recurrencyKind>
+    assert request.charging_profile.recurrency_kind == RECURRENCY_KIND, \
+        f"Expected chargingProfile.recurrencyKind {RECURRENCY_KIND}, " \
+        f"got {request.charging_profile.recurrency_kind}"
+
+    start_task.cancel()

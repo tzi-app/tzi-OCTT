@@ -49,3 +49,75 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+TRANSACTION_DURATION = int(os.environ['TRANSACTION_DURATION'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_33(connection, reconnect):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # 1. The Test System closes the WebSocket connection.
+    await cp.disconnect()
+
+    # 2. The Test System waits a number of seconds equal to <Configured Transaction Duration>,
+    #    then it will reconnect to the CSMS.
+    await asyncio.sleep(TRANSACTION_DURATION)
+    # The meter value that the station has in its queue was sampled while it was offline.
+    sampled_at = utc_now_iso()
+    start_task = cp.use_connection(await reconnect(
+        BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD)))
+
+    # 3. The CSMS sends a GetTransactionStatusRequest
+    # 4. The Test System responds with a GetTransactionStatusResponse
+    #    - With ongoingIndicator is omitted.
+    #    - messagesInQueue is true
+    cp.set_response('GetTransactionStatus', messages_in_queue=True)
+    request = await cp.wait_for_request(
+        'GetTransactionStatus', manual_action=send_call(BASIC_AUTH_CP, 'GetTransactionStatus'))
+    assert request.transaction_id is None, \
+        f"GetTransactionStatusRequest.transactionId must be omitted, got {request.transaction_id}"
+
+    # 5. The Test System sends a TransactionEventRequest
+    #    - With eventType is Updated
+    #    - meterValues is present.
+    #    - offline is true
+    # 6. The CSMS responds with a TransactionEventResponse
+    await cp.call(call.TransactionEvent(
+        event_type='Updated',
+        timestamp=sampled_at,
+        trigger_reason='MeterValuePeriodic',
+        seq_no=cp.next_seq_no(),
+        offline=True,
+        transaction_info={'transaction_id': transaction_id},
+        meter_value=[{
+            'timestamp': sampled_at,
+            'sampled_value': [{'value': 1500.0, 'context': 'Sample.Periodic'}],
+        }],
+    ))
+
+    start_task.cancel()

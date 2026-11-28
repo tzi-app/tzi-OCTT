@@ -67,3 +67,78 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import trigger_message
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+CONFIGURED_CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_f_24(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The Test System notifies the CSMS about the current state of the connector.
+    #    Message: StatusNotificationRequest
+    #    - connectorStatus Occupied
+    #    - evseId <Configured evseId>
+    #    - connectorId <Configured connectorId>
+    #    Message: NotifyEventRequest
+    #    - trigger Delta
+    #    - actualValue "Occupied"
+    #    - component.name "Connector"
+    #    - component.evse.id <Configured evseId>
+    #    - component.evse.connectorid <Configured connectorId>
+    #    - variable.name "AvailabilityState"
+    # 2. The CSMS responds accordingly.
+    await cp.send_connector_status('Occupied', evse_id=CONFIGURED_EVSE_ID,
+                                   connector_id=CONFIGURED_CONNECTOR_ID)
+
+    # 3. The CSMS sends a TriggerMessageRequest
+    #    A StatusNotification is requested for a connector (F06.FR.13).
+    # 4. The Test System responds with a TriggerMessageResponse with status Accepted
+    cp.set_response('TriggerMessage', status='Accepted')
+    request = await cp.wait_for_request(
+        'TriggerMessage',
+        manual_action=trigger_message(BASIC_AUTH_CP, 'StatusNotification',
+                                      evse_id=CONFIGURED_EVSE_ID,
+                                      connector_id=CONFIGURED_CONNECTOR_ID))
+    assert request.requested_message == 'StatusNotification', \
+        f"Expected TriggerMessageRequest.requestedMessage StatusNotification, " \
+        f"got {request.requested_message}"
+    assert request.evse is not None and request.evse.id == CONFIGURED_EVSE_ID, \
+        f"Expected TriggerMessageRequest.evse.id {CONFIGURED_EVSE_ID}, got {request.evse}"
+
+    # 5. The Test System notifies the CSMS about the current state of the connector.
+    #    Message: StatusNotificationRequest
+    #    - connectorStatus Occupied
+    #    - evseId <Configured evseId>
+    #    - connectorId <Configured connectorId>
+    #    Message: NotifyEventRequest
+    #    - trigger Delta
+    #    - actualValue "Occupied"
+    #    - component.name "Connector"
+    #    - component.evse.id <Configured evseId>
+    #    - component.evse.connectorid <Configured connectorId>
+    #    - variable.name "AvailabilityState"
+    # 6. The CSMS responds accordingly.
+    await cp.send_connector_status('Occupied', evse_id=CONFIGURED_EVSE_ID,
+                                   connector_id=CONFIGURED_CONNECTOR_ID)
+
+    start_task.cancel()

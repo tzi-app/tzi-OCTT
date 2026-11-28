@@ -57,3 +57,44 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.authorized import authorized
+from reusable_states.booted import booted
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from reusable_states.iso15118_smart_charging import iso15118_smart_charging
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_53(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is Authorized
+    await authorized(cp)
+    # The charging needs come from an EV over ISO 15118: the EV is connected to the EVSE.
+    await ev_connected_pre_session(cp)
+
+    # 1. Execute reusable state ISO15118SmartCharging
+    await iso15118_smart_charging(cp)
+
+    # 2. The CSMS does NOT send a SetChargingProfileRequest
+    #    Note(s): The CSMS must NOT initiate a renegotiate after starting the transaction,
+    #    without cause. For example; a smart charging algorithm or an external trigger, etc.
+    await cp.expect_no_request('SetChargingProfile')
+
+    start_task.cancel()

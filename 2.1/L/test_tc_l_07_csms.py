@@ -58,3 +58,40 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           algorithm is used for signing. Please refer to section [certificate_properties] for more details
           about signature algorithms and computing hash values. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from firmware import request_firmware_update
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_l_07(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a UpdateFirmwareRequest
+    # 2. The Test System responds with a UpdateFirmwareResponse - With status Accepted
+    request = await request_firmware_update(cp)
+
+    # 3. The Test System sends a FirmwareStatusNotificationRequest. - With status Downloading
+    # 4. The CSMS responds with a FirmwareStatusNotificationResponse.
+    # 5. ... - With status DownloadFailed
+    # 6. The CSMS responds with a FirmwareStatusNotificationResponse.
+    for status in ('Downloading', 'DownloadFailed'):
+        await cp.send_firmware_status_notification_request(status, request_id=request.request_id)
+
+    start_task.cancel()

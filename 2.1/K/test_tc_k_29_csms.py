@@ -67,3 +67,60 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           ExternalConstraints, LocalGeneration or a TxDefaultProfile. / Note, that a TxDefaultProfile is not
           applied to EVSE #0 but to all individual EVSEs (see K01.FR.14). |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from smart_charging import (
+    CHARGING_LIMIT_SOURCE,
+    CHARGING_PROFILE_PURPOSE,
+    reported_profile,
+    request_charging_profiles_report,
+    validate_get_charging_profiles,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_29(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: EnergyTransferStarted
+    await energy_transfer_started(cp)
+
+    # 1. The CSMS sends a GetChargingProfilesRequest with
+    #    - evseId 0
+    # 2. The Test System responds with a GetChargingProfilesResponse with
+    #    - status Accepted
+    request = await request_charging_profiles_report(
+        cp, evse_id=0, chargingProfilePurpose=CHARGING_PROFILE_PURPOSE)
+    # evseId 0, chargingProfile.chargingProfilePurpose <Configured chargingProfilePurpose>;
+    # stackLevel, chargingLimitSource and chargingProfileId must be omitted
+    validate_get_charging_profiles(request, evse_id=0, purpose=CHARGING_PROFILE_PURPOSE)
+
+    # 3. The Test System sends a ReportChargingProfilesRequest with
+    #    - requestId <Received requestId>
+    # 4. The CSMS responds with a ReportChargingProfilesResponse
+    await cp.call(call.ReportChargingProfiles(
+        request_id=request.request_id,
+        charging_limit_source=CHARGING_LIMIT_SOURCE,
+        evse_id=0,
+        charging_profile=[reported_profile()],
+    ))
+
+    start_task.cancel()

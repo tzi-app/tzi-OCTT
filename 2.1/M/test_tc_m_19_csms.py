@@ -43,3 +43,44 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_m_19(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Trigger the CSMS to send a GetInstalledCertificateIdsRequest with
+    #                certificateType ManufacturerRootCertificate.
+    # 1. The CSMS sends a GetInstalledCertificateIdsRequest
+    # 2. The Test System responds with a GetInstalledCertificateIdsResponse
+    #    - With status is NotFound
+    #    - certificateHashDataChain is omitted.
+    cp.set_response('GetInstalledCertificateIds', status='NotFound')
+    request = await cp.wait_for_request(
+        'GetInstalledCertificateIds',
+        manual_action=send_call(BASIC_AUTH_CP, 'GetInstalledCertificateIds',
+                                {'certificateType': ['ManufacturerRootCertificate']}))
+    assert request.certificate_type == ['ManufacturerRootCertificate'], \
+        f"Expected GetInstalledCertificateIdsRequest.certificateType ManufacturerRootCertificate, " \
+        f"got {request.certificate_type}"
+
+    start_task.cancel()

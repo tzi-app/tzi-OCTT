@@ -145,3 +145,88 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           CS accepts the charging profile instead of rejecting it, as long as it sends a charging profile
           again when it receives the NotifyEVChargingNeedsRequest. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.authorized import authorized
+from reusable_states.booted import booted
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from reusable_states.iso15118_20_transaction_just_started import V2X_VARIABLES
+from reusable_states.iso15118_smart_charging import (
+    negotiate_charging_schedule,
+    notify_ev_charging_schedule,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_115(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports ISO 15118-20.
+    cp.variables = dict(V2X_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State(s): State is Authorized, State is EVConnectedPreSession
+    await authorized(cp)
+    await ev_connected_pre_session(cp)
+
+    # 1. The Test System sends a NotifyEVChargingNeedsRequest with
+    #    - evseId <Configured evseId>
+    #    - maxScheduleTuples 3
+    #    - chargingNeeds.requestedEnergyTransfer AC_BPT
+    #    - chargingNeeds.availableEnergyTransfer [AC_single_phase, AC_three_phase, AC_BPT]
+    #    - chargingNeeds.controlMode DynamicControl
+    #    - chargingNeeds.v2xChargingParameters.maxChargePower 5000
+    #    - chargingNeeds.v2xChargingParameters.maxDischargePower 5000
+    # 2. The CSMS responds with a NotifyEVChargingNeedsResponse.
+    #    - status must be Accepted or Processing
+    # 3. The CSMS sends a SetChargingProfileRequest
+    #    Note(s): If NotifyEVChargingNeedsResponseStatus was Processing, the Test System will
+    #    wait 60 seconds for the request
+    #    - evseId must be <Configured evseId>, chargingProfilePurpose must be TxProfile,
+    #      transactionId must be <Provided transactionId from before>
+    # 4. The Test System responds with a SetChargingProfileResponse with
+    #    - status Accepted
+    request = await negotiate_charging_schedule(cp, {
+        'requested_energy_transfer': 'AC_BPT',
+        'available_energy_transfer': ['AC_single_phase', 'AC_three_phase', 'AC_BPT'],
+        'control_mode': 'DynamicControl',
+        'v2x_charging_parameters': {'max_charge_power': 5000, 'max_discharge_power': 5000},
+    }, max_schedule_tuples=3)
+    for index, schedule in enumerate(request.charging_profile.charging_schedule):
+        where = f"chargingProfile.chargingSchedule[{index}]"
+        # chargingSchedulePeriods must be size <= 3
+        assert len(schedule.charging_schedule_period) <= 3, \
+            f"{where}.chargingSchedulePeriod must be size <= 3, got {len(schedule.charging_schedule_period)}"
+        # absolutePriceSchedule.priceRuleStacks must be size <= 3
+        if schedule.absolute_price_schedule is not None:
+            stacks = schedule.absolute_price_schedule.price_rule_stacks
+            assert len(stacks) <= 3, \
+                f"{where}.absolutePriceSchedule.priceRuleStacks must be size <= 3, got {len(stacks)}"
+        # priceLevelSchedule.priceLevelScheduleEntries must be size <= 3
+        if schedule.price_level_schedule is not None:
+            entries = schedule.price_level_schedule.price_level_schedule_entries
+            assert len(entries) <= 3, \
+                f"{where}.priceLevelSchedule.priceLevelScheduleEntries must be size <= 3, got {len(entries)}"
+
+    # 5. The Test System sends a NotifyEVChargingScheduleRequest with
+    #    - evseId <Configured evseId>
+    #    - chargingSchedule <ChargingSchedule provided at step 3>
+    # 6. The CSMS responds with a NotifyEVChargingScheduleResponse.
+    #    - status must be Accepted
+    await notify_ev_charging_schedule(
+        cp, request.charging_profile.charging_schedule[0], selected=True)
+
+    start_task.cancel()

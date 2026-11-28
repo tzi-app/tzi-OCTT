@@ -1,6 +1,8 @@
 import json
 import os
+import socketserver
 import ssl
+from http.server import HTTPServer
 import jsonschema
 import base64
 from pathlib import Path
@@ -188,8 +190,10 @@ def validate_cert_x509_pem(der_cert):
     return pem_str
 
 
-def generate_csr(common_name):
+def generate_csr(common_name, country=None, organization=None, organizational_unit=None):
     """Generate a CSR and private key for certificate signing tests.
+    The subject is the common name, with the country, organization and organizational unit
+    that are given.
     Returns (csr_pem_str, private_key).
     """
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -197,9 +201,18 @@ def generate_csr(common_name):
     from cryptography import x509
     from cryptography.x509.oid import NameOID
 
+    subject = []
+    if country:
+        subject.append(x509.NameAttribute(NameOID.COUNTRY_NAME, country))
+    if organization:
+        subject.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization))
+    if organizational_unit:
+        subject.append(x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, organizational_unit))
+    subject.append(x509.NameAttribute(NameOID.COMMON_NAME, common_name))
+
     private_key = ec.generate_private_key(ec.SECP256R1())
     csr = x509.CertificateSigningRequestBuilder().subject_name(
-        x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+        x509.Name(subject)
     ).sign(private_key, hashes.SHA256())
     csr_pem = csr.public_bytes(serialization.Encoding.PEM).decode()
     return csr_pem, private_key
@@ -229,6 +242,18 @@ def save_cert_chain_to_temp(cert_chain_pem):
     f.write(cert_chain_pem)
     f.close()
     return f.name
+
+
+class LocalHTTPServer(HTTPServer):
+    """An HTTPServer for the mock services of the Test System.
+
+    HTTPServer looks up the fully qualified name of its host when it binds. For localhost
+    that can take tens of seconds on some machines, and the mock services do not use the name.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def now_iso():

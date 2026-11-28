@@ -84,3 +84,51 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    charging_profile,
+    CHARGING_PROFILE_ID,
+    only_schedule,
+    request_charging_profile,
+    validate_profile,
+    validate_schedule,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_03(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetChargingProfileRequest
+    #    - chargingProfile.id <Configured chargingProfileId>
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(
+        cp, 0, charging_profile('ChargingStationMaxProfile', 'Absolute', 8))
+
+    # evseId 0, stackLevel <Configured stackLevel>, chargingProfilePurpose
+    # ChargingStationMaxProfile, chargingProfileKind Absolute
+    validate_profile(request, evse_id=0, purpose='ChargingStationMaxProfile', kind='Absolute',
+                     profile_id=CHARGING_PROFILE_ID)
+    # chargingRateUnit <Configured ChargingRateUnit>, duration <Configured duration>,
+    # chargingSchedulePeriod.startPeriod 0, .limit 8.0 or 8000.0, .numberPhases <Configured
+    # numberPhases> (or omitted when that is 3), startSchedule <Not omitted>
+    validate_schedule(only_schedule(request), amperes=8, start_schedule=True, duration=True)
+
+    start_task.cancel()

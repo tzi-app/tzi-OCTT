@@ -49,3 +49,54 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from tariffs import (
+    PEAK_AND_OTHER_HOURS,
+    tariff_cost_ctrlr_variables,
+    time_of_day_tariff,
+    validate_time_of_day_prices,
+)
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_i_102(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisites: CS has TariffCostCtrlr.Enabled[Tariff] = true, MaxElements[Tariff] > 0 and
+    # ConditionsSupported[Tariff] = true
+    cp.variables = tariff_cost_ctrlr_variables(max_elements=1)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to set a default tariff on EVSE 0 with
+    #     - validFrom
+    #     - Price for energy in peak hours
+    #     - Price for energy other hours
+    # 1. The CSMS sends a SetDefaultTariffRequest
+    # 2. The Test System responds with SetDefaultTariffResponse with status TooManyElements
+    cp.set_response('SetDefaultTariff', status='TooManyElements')
+    request = await cp.wait_for_request(
+        'SetDefaultTariff',
+        manual_action=send_call(BASIC_AUTH_CP, 'SetDefaultTariff', {
+            'evseId': 0,
+            'tariff': time_of_day_tariff(PEAK_AND_OTHER_HOURS),
+        }))
+    assert request.evse_id == 0, f"Expected SetDefaultTariffRequest.evseId 0, got {request.evse_id}"
+    validate_time_of_day_prices('SetDefaultTariffRequest', request.tariff, number_of_prices=2)
+
+    start_task.cancel()

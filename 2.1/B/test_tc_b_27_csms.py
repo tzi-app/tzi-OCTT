@@ -114,3 +114,66 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Ended) message with triggerReason = ResetCommand and transactionInfo.stoppedReason = ImmediateReset
           before resetting the EVSE. | |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import reset
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+CONFIGURED_CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_27(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(
+        cp, evse_id=CONFIGURED_EVSE_ID, connector_id=CONFIGURED_CONNECTOR_ID)
+
+    # Manual Action: Request the CSMS to reboot the charging EVSE with status Immediate
+    # 1. The CSMS sends a ResetRequest with status Immediate and evseId <Configured evseId>
+    # 2. The Test System responds with a ResetResponse with status Accepted
+    reset_request = await cp.wait_for_request(
+        'Reset', manual_action=reset(BASIC_AUTH_CP, 'Immediate', evse_id=CONFIGURED_EVSE_ID))
+    assert reset_request.type == 'Immediate', \
+        f"Expected ResetRequest.type Immediate, got: {reset_request.type}"
+    assert reset_request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected ResetRequest.evseId {CONFIGURED_EVSE_ID}, got: {reset_request.evse_id}"
+
+    # 3. The Test System sends a TransactionEventRequest.
+    #    - eventType Ended
+    #    - triggerReason ResetCommand
+    #    - transactionInfo.chargingState EVConnected
+    #    - transactionInfo.stoppedReason ImmediateReset
+    # 4. The CSMS responds with a TransactionEventResponse.
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='ResetCommand',
+        seq_no=cp.next_seq_no(),
+        transaction_info={
+            'transaction_id': transaction_id,
+            'charging_state': 'EVConnected',
+            'stopped_reason': 'ImmediateReset',
+        },
+    ))
+
+    start_task.cancel()

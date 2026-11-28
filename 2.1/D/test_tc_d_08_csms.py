@@ -31,3 +31,38 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+LOCAL_LIST_VERSION = int(os.environ['LOCAL_LIST_VERSION'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_d_08(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to get a Local Authorization list version
+    # 1. The CSMS sends a GetLocalListVersionRequest
+    # 2. The Test System responds with a GetLocalListVersionResponse with versionNumber
+    #    <Configured versionNumber>
+    cp.local_list_version = LOCAL_LIST_VERSION
+    await cp.wait_for_request(
+        'GetLocalListVersion', manual_action=send_call(BASIC_AUTH_CP, 'GetLocalListVersion'))
+
+    start_task.cancel()

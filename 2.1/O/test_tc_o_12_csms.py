@@ -37,3 +37,47 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from display_messages import (
+    display_message,
+    display_message_configured,
+    MESSAGE_ID,
+    request_display_message,
+    validate_message,
+)
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_o_12(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Memory State: A display message is configured.
+    await display_message_configured(cp)
+
+    # Manual Action: Request the CSMS to sent a display message with the same id as already
+    #                configured one
+    # 1. The CSMS sends a SetDisplayMessageRequest with:
+    #    - message.id <Configured_Id>
+    #    - message.priority <Configured Priority>
+    # 2. The Test System responds with a SetDisplayMessageResponse with status Accepted
+    request = await request_display_message(cp, display_message(MESSAGE_ID))
+    validate_message(request, message_id=MESSAGE_ID)
+
+    start_task.cancel()

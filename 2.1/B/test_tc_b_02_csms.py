@@ -75,3 +75,63 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from trigger import set_pending_boot
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_HEARTBEAT_INTERVAL = int(os.environ['CONFIGURED_HEARTBEAT_INTERVAL'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_02(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # Prerequisite: The CSMS is configured to first respond to a BootNotificationRequest with
+    # status Pending.
+    await set_pending_boot(BASIC_AUTH_CP, pending=True)
+    try:
+        # 1. The Test System sends a BootNotificationRequest with reason PowerUp, the
+        #    configured model and the configured vendorName
+        # 2. The CSMS responds with a BootNotificationResponse
+        boot_response = await cp.send_boot_notification(reason='PowerUp')
+        assert boot_response.status == 'Pending', \
+            f"Expected BootNotificationResponse.status Pending, got {boot_response.status}"
+    finally:
+        # The CSMS accepts the station from here on.
+        await set_pending_boot(BASIC_AUTH_CP, pending=False)
+
+    # If the interval in the BootNotificationResponse equals 0, the Test System waits
+    # <Configured heartbeatInterval> seconds before sending another BootNotificationRequest,
+    # and otherwise the interval of the BootNotificationResponse. During this interval, the
+    # CSMS may send messages to retrieve information from the Charging Station or to change
+    # its configuration. The Test System responds to these messages.
+    await asyncio.sleep(boot_response.interval or CONFIGURED_HEARTBEAT_INTERVAL)
+
+    # 3. The Test System sends a BootNotificationRequest with reason PowerUp, the configured
+    #    model and the configured vendorName
+    # 4. The CSMS responds with a BootNotificationResponse
+    boot_response = await cp.send_boot_notification(reason='PowerUp')
+    assert boot_response.status == 'Accepted', \
+        f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+    # 5. The Test System notifies the CSMS about the current state of all connectors.
+    #    StatusNotificationRequest - connectorStatus Available
+    #    NotifyEventRequest - trigger Delta, actualValue "Available",
+    #                         component.name "Connector", variable.name "AvailabilityState"
+    # 6. The CSMS responds accordingly.
+    await cp.send_all_connectors_status('Available')
+
+    start_task.cancel()

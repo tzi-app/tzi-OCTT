@@ -70,3 +70,59 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
         | New | M06.FR.10 | If ISO15118Ctrlr.DisableOSCPPrefetching is absent or false | The Charging Station
           SHALL refresh the cached OCSP data at least once a week. |
 """
+
+import asyncio
+import base64
+import os
+
+import pytest
+from cryptography.x509 import ocsp
+
+import contract_pki
+from charge_point import TziChargePoint21
+from mock_ocsp_responder import MockOCSPResponder
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+# The OCSP service of the Test System, which the responder URL of the request points to
+OCSP_PORT = 19080
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_m_24(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    try:
+        ocsp_responder = MockOCSPResponder(port=OCSP_PORT, cert_status="good")
+        ocsp_responder.start()
+
+        # 1. The Test System sends one or more subsequent GetCertificateStatusRequests
+        #    With ocspRequestData contains <hashes from configured (V2G) certificate chain SubCA's>
+        # 2. The CSMS responds with a GetCertificateStatusResponse
+        response = await cp.send_get_certificate_status_request(contract_pki.ocsp_request_data(
+            contract_pki.load_certificate(contract_pki.SUB_CA),
+            contract_pki.load_certificate(contract_pki.ROOT_CA),
+            f'http://localhost:{OCSP_PORT}',
+        ))
+        assert response.status == 'Accepted', \
+            f"Expected GetCertificateStatusResponse.status Accepted, got {response.status}"
+        # ocspResult <OCSPResponse class as defined in IETF RFC 6960. DER encoded (as defined in IETF
+        # RFC 6960), and then base64 encoded.>
+        assert response.ocsp_result, "GetCertificateStatusResponse has no ocspResult"
+        try:
+            ocsp.load_der_ocsp_response(base64.b64decode(response.ocsp_result, validate=True))
+        except ValueError as error:
+            pytest.fail(f"ocspResult is not a base64 encoded DER OCSPResponse: {error}")
+    finally:
+        ocsp_responder.stop()
+
+    start_task.cancel()

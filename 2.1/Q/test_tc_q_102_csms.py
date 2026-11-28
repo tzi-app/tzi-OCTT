@@ -162,3 +162,11 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
         This testcases has been removed, because as a CSMS cannot be forced to omit the energyModes. In
         addition, there is also no added benefit to test this.
 """
+
+import pytest
+
+
+@pytest.mark.skip(reason="TC_Q_102_CSMS was removed by OCPP 2.1 Edition 2 errata 2026-09 (5.6, 6.3.18)")
+def test_tc_q_102():
+    """The test case has been removed, because a CSMS cannot be forced to omit the energy
+    modes (allowedEnergyTransfer) from its AuthorizeResponse."""

@@ -77,3 +77,67 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.iso15118_20_transaction_just_started import V2X_VARIABLES
+from reusable_states.iso15118_20_transaction_started_in_v2x_ac_bpt_energy_transfer_mode import (
+    iso15118_20_transaction_started_in_v2x_ac_bpt_energy_transfer_mode,
+)
+from smart_charging import charging_profile, request_charging_profile, validate_profile
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_101(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports ISO 15118-20 and V2X.
+    cp.variables = dict(V2X_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is ISO15118-20 transaction started in V2X AC_BPT energy transfer mode
+    _, transaction_id = await iso15118_20_transaction_started_in_v2x_ac_bpt_energy_transfer_mode(cp)
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile charging profile with
+    #                operationMode Idle
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with
+    #    - status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxDefaultProfile', 'Absolute', 0,
+        schedule={'chargingSchedulePeriod': [{'startPeriod': 0, 'operationMode': 'Idle'}]}))
+    validate_profile(request, purpose='TxDefaultProfile', stack_level=None)
+    period = request.charging_profile.charging_schedule[0].charging_schedule_period[0]
+    assert period.operation_mode == 'Idle', \
+        f"Expected chargingSchedule.chargingSchedulePeriod[0].operationMode Idle, got {period.operation_mode}"
+
+    # 3. The Test System sends a TransactionEventRequest with
+    #    - eventType Updated
+    #    - triggerReason OperationModeChanged
+    #    - transactionInfo.operationMode Idle
+    # 4. The CSMS responds with a TransactionEventResponse: it accepts the event
+    await cp.call(call.TransactionEvent(
+        event_type='Updated',
+        timestamp=utc_now_iso(),
+        trigger_reason='OperationModeChanged',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'operation_mode': 'Idle'},
+    ))
+
+    start_task.cancel()

@@ -181,3 +181,84 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Charging Station does not send TransactionEventRequest with:] / [removed: - triggerReason =
           Authorized or chargingState = Charging] / N/a |
 """
+
+import asyncio
+import os
+
+import pytest
+
+import contract_pki
+from authorization import validate_id_token_info
+from charge_point import TziChargePoint21
+from contract_pki import contract_chain_hash_data, contract_chain_with_issuers
+from mock_ocsp_responder import MockOCSPResponder
+from reusable_states.booted import booted
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+# The valid idToken of this test case is the configured eMAID, which the CSMS knows as valid:
+# an AuthorizeRequest with data of a contract certificate has the eMAID as its idToken
+# (C07.FR.02).
+EMAID_ID_TOKEN = {'id_token': os.environ['EMAID_ID_TOKEN'], 'type': os.environ['EMAID_ID_TOKEN_TYPE']}
+
+# The OCSP service of the Test System, which the responder URL of the hash data points to
+OCSP_PORT = 19081
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_51(connection):
+    # Prerequisite: The contract certificate is revoked.
+    contract_certificate = contract_pki.load_certificate(contract_pki.CONTRACT)
+    ocsp_responder = MockOCSPResponder(
+        port=OCSP_PORT, revoked_serials={contract_certificate.serial_number})
+    ocsp_responder.start()
+    try:
+        assert connection.open
+        cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+        start_task = asyncio.create_task(cp.start())
+        await booted(cp)
+
+        # Reusable State: State is EVConnectedPreSession
+        await ev_connected_pre_session(cp)
+
+        # 1. The Test System sends an AuthorizeRequest with:
+        #    - idToken.idToken <Configured valid_idtoken_idtoken>
+        #    - idToken.type <Configured valid_idtoken_type>
+        #    - iso15118CertificateHashData contains <hashes from configured (V2G) certificate
+        #      chain>: the contract certificate and its sub-CA
+        # 2. The CSMS sends an OCSP request to responder URL of iso15118CertificateHashData to
+        #    check validity
+        # 3. The Test System OCSP service responds that certificate is revoked (errata
+        #    2026-09, 6.3.8).
+        # 4. The CSMS responds with a AuthorizeResponse
+        response = await cp.send_authorization_request_with_iso15118(
+            id_token=EMAID_ID_TOKEN['id_token'],
+            token_type=EMAID_ID_TOKEN['type'],
+            iso15118_certificate_hash_data=contract_chain_hash_data(f"http://localhost:{OCSP_PORT}/ocsp"),
+        )
+
+        # Step 2: CSMS sends an OCSP request for iso15118CertificateHashData
+        assert ocsp_responder.requests_received > 0, \
+            "The CSMS did not send an OCSP request to the responder URL of the hash data"
+        # Step 3: Test System checks that received request for iso15118CertificateHashData is
+        # valid: it is about a certificate of the hash data
+        for request in ocsp_responder.requests:
+            assert any(request.is_about(certificate, issuer)
+                       for certificate, issuer in contract_chain_with_issuers()), \
+                f"OCSP request about a certificate that is not in the hash data " \
+                f"(serial {request.serial_number:X})"
+
+        # Step 4: idTokenInfo.status Invalid, certificateStatus CertificateRevoked
+        validate_id_token_info('AuthorizeResponse', response.id_token_info, status='Invalid')
+        assert response.certificate_status == 'CertificateRevoked', \
+            f"Expected AuthorizeResponse.certificateStatus CertificateRevoked, " \
+            f"got {response.certificate_status}"
+
+        start_task.cancel()
+    finally:
+        ocsp_responder.stop()

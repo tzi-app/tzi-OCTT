@@ -204,3 +204,156 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           | <empty> |
         | Post scenario validations: / N/a |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.iso15118_20_transaction_just_started import (
+    iso15118_20_transaction_just_started,
+    V2X_VARIABLES,
+)
+from reusable_states.iso15118_smart_charging import negotiate_charging_schedule
+from smart_charging import periods_of, POWER_FIELDS, validate_periods
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# The energy transfers that the mock EV supports
+AVAILABLE_ENERGY_TRANSFER = ['AC_single_phase', 'AC_two_phase', 'AC_three_phase', 'AC_BPT',
+                             'AC_BPT_DER', 'AC_DER']
+BIDIRECTIONAL = ('DC_BPT', 'AC_BPT', 'AC_BPT_DER')
+
+
+def charging_needs(requested_energy_transfer):
+    """The chargingNeeds of the scenario, for an energy transfer."""
+    return {
+        'requested_energy_transfer': requested_energy_transfer,
+        'available_energy_transfer': AVAILABLE_ENERGY_TRANSFER,
+        'control_mode': 'ScheduledControl',
+        'v2x_charging_parameters': {'max_charge_power': 1234, 'max_discharge_power': 1234},
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_q_107(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports ISO 15118-20 and V2X.
+    cp.variables = dict(V2X_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # The scenario is the one of errata 2026-09 (6.3.20).
+
+    # Reusable State: State is ISO15118-20 transaction just started exposing
+    #                 <allowedEnergyTransferModes> and <transactionId>
+    allowed_energy_transfer_modes, transaction_id = await iso15118_20_transaction_just_started(cp)
+
+    # Agree on energy transfer mode
+    # 1. The Test System sends a NotifyEVChargingNeedsRequest with
+    #    - evseId <Configured evseId>
+    #    - chargingNeeds.requestedEnergyTransfer one of non-bidirectional mode in
+    #      <allowedEnergyTransferModes> received in AuthorizeResponse or if omitted AC_three_phase
+    #    - chargingNeeds.availableEnergyTransfer [AC_single_phase, AC_two_phase, AC_three_phase,
+    #      AC_BPT, AC_BPT_DER, AC_DER]
+    #    - chargingNeeds.controlMode ScheduledControl
+    #    - chargingNeeds.v2xChargingParameters.maxChargePower 1234W
+    #    - chargingNeeds.v2xChargingParameters.maxDischargePower 1234W
+    # 2. The CSMS responds with a NotifyEVChargingNeedsResponse
+    #    - status must be Accepted or Processing
+    # Setting charging profile
+    # 3. The CSMS sends a SetChargingProfileRequest
+    # 4. The Test System responds with a SetChargingProfileResponse with
+    #    - status Accepted
+    requested = 'AC_three_phase'
+    if allowed_energy_transfer_modes:
+        charging_only = [mode for mode in allowed_energy_transfer_modes if 'BPT' not in mode]
+        assert charging_only, \
+            f"The CSMS allows no non-bidirectional energy transfer: {allowed_energy_transfer_modes}"
+        if requested not in charging_only:
+            requested = charging_only[0]
+    request = await negotiate_charging_schedule(
+        cp, charging_needs(requested), max_schedule_tuples=None, validate=False)
+    assert request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected SetChargingProfileRequest.evseId {CONFIGURED_EVSE_ID}, got {request.evse_id}"
+    assert request.charging_profile.transaction_id == transaction_id, \
+        f"Expected chargingProfile.transactionId {transaction_id}, " \
+        f"got {request.charging_profile.transaction_id}"
+    # operationMode must be ChargingOnly | <omitted>; limit must NOT be <omitted>; the discharge
+    # limits, setpoints and reactive setpoints must be <omitted>
+    validate_periods(
+        request, operation_mode=('ChargingOnly', None), present=('limit',),
+        omitted=[name for name in POWER_FIELDS if not name.startswith('limit')])
+
+    # Manual Action: Trigger CSMS to allow V2X after initial start
+    # 5. The CSMS sends a NotifyAllowedEnergyTransferRequest
+    # 6. The Test System sends a NotifyAllowedEnergyTransferResponse with status Accepted
+    cp.set_response('NotifyAllowedEnergyTransfer', status='Accepted')
+    notification = await cp.wait_for_request(
+        'NotifyAllowedEnergyTransfer',
+        manual_action=send_call(BASIC_AUTH_CP, 'NotifyAllowedEnergyTransfer', {
+            'transactionId': transaction_id,
+            'allowedEnergyTransfer': [requested, 'AC_BPT'],
+        }))
+    assert notification.transaction_id == transaction_id, \
+        f"Expected NotifyAllowedEnergyTransferRequest.transactionId {transaction_id}, " \
+        f"got {notification.transaction_id}"
+    bidirectional = [mode for mode in notification.allowed_energy_transfer if mode in BIDIRECTIONAL]
+    assert bidirectional, \
+        f"NotifyAllowedEnergyTransferRequest.allowedEnergyTransfer must contain one of " \
+        f"{list(BIDIRECTIONAL)}, got {notification.allowed_energy_transfer}"
+
+    # 7. The Test System sends a NotifyEVChargingNeedsRequest with
+    #    - evseId <Configured evseId>
+    #    - chargingNeeds.requestedEnergyTransfer one of bidirectional mode in
+    #      <allowedEnergyTransferModes> received in NotifyAllowedEnergyTransferRequest
+    #    - the other chargingNeeds as in step 1
+    # 8. The CSMS responds with a NotifyEVChargingNeedsResponse
+    #    - status must be Accepted or Processing
+    # Setting charging profile
+    # 9. The CSMS sends a SetChargingProfileRequest
+    # 10. The Test System responds with a SetChargingProfileResponse with
+    #     - status Accepted
+    usable = [mode for mode in bidirectional if mode in AVAILABLE_ENERGY_TRANSFER]
+    request = await negotiate_charging_schedule(
+        cp, charging_needs((usable or bidirectional)[0]), max_schedule_tuples=None, validate=False)
+    assert request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected SetChargingProfileRequest.evseId {CONFIGURED_EVSE_ID}, got {request.evse_id}"
+    assert request.charging_profile.transaction_id == transaction_id, \
+        f"Expected chargingProfile.transactionId {transaction_id}, " \
+        f"got {request.charging_profile.transaction_id}"
+    # operationMode must NOT be ChargingOnly | <empty>
+    for where, period in periods_of(request):
+        assert period.operation_mode not in (None, 'ChargingOnly'), \
+            f"{where}.operationMode must not be ChargingOnly or omitted, got {period.operation_mode}"
+
+    # 11. The Test System sends a TransactionEventRequest with
+    #     - eventType Updated
+    #     - triggerReason OperationModeChanged
+    #     - transactionInfo.transactionId <transactionId>
+    #     - transactionInfo.operationMode <Operation mode from step 9>
+    # 12. The CSMS responds with a TransactionEventResponse
+    await cp.call(call.TransactionEvent(
+        event_type='Updated',
+        timestamp=utc_now_iso(),
+        trigger_reason='OperationModeChanged',
+        seq_no=cp.next_seq_no(),
+        transaction_info={
+            'transaction_id': transaction_id,
+            'operation_mode': periods_of(request)[0][1].operation_mode,
+        },
+    ))
+
+    start_task.cancel()

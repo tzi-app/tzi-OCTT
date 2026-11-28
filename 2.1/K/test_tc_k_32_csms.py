@@ -65,3 +65,56 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           ExternalConstraints, LocalGeneration or a TxDefaultProfile. / Note, that a TxDefaultProfile is not
           applied to EVSE #0 but to all individual EVSEs (see K01.FR.14). |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    CHARGING_LIMIT_SOURCE,
+    CHARGING_PROFILE_ID,
+    reported_profile,
+    request_charging_profiles_report,
+    validate_get_charging_profiles,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_32(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a GetChargingProfilesRequest
+    #    - chargingProfileId <Received chargingProfileId>
+    # 2. The Test System responds with a GetChargingProfilesResponse with
+    #    - status Accepted
+    request = await request_charging_profiles_report(cp, chargingProfileId=[CHARGING_PROFILE_ID])
+    # evseId, chargingProfilePurpose, stackLevel and chargingLimitSource must be omitted;
+    # chargingProfile.chargingProfileId <received chargingProfileId>
+    validate_get_charging_profiles(request, profile_id=CHARGING_PROFILE_ID)
+
+    # 3. The Test System sends a ReportChargingProfilesRequest with
+    #    - requestId Generated Id
+    # 4. The CSMS responds with a ReportChargingProfilesResponse
+    await cp.call(call.ReportChargingProfiles(
+        request_id=request.request_id,
+        charging_limit_source=CHARGING_LIMIT_SOURCE,
+        evse_id=CONFIGURED_EVSE_ID,
+        charging_profile=[reported_profile(CHARGING_PROFILE_ID)],
+    ))
+
+    start_task.cancel()

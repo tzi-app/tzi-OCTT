@@ -28,13 +28,14 @@ Usage:
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
 
 import contract_pki
+from utils import LocalHTTPServer
 
 _CERT_STATUSES = {
     'good': ocsp.OCSPCertStatus.GOOD,
@@ -155,7 +156,7 @@ class MockOCSPResponder:
             def log_message(self, format, *args):
                 pass  # suppress request logging
 
-        self._server = HTTPServer(('localhost', self.port), Handler)
+        self._server = LocalHTTPServer(('localhost', self.port), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 

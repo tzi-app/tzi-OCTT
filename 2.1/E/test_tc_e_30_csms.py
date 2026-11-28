@@ -43,3 +43,45 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_30(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # 1. The CSMS sends a GetTransactionStatusRequest
+    # 2. The Test System responds with a GetTransactionStatusResponse With ongoingIndicator is
+    #    true, messagesInQueue is false
+    cp.set_response('GetTransactionStatus', ongoing_indicator=True, messages_in_queue=False)
+    request = await cp.wait_for_request(
+        'GetTransactionStatus',
+        manual_action=send_call(BASIC_AUTH_CP, 'GetTransactionStatus',
+                                {'transactionId': transaction_id}))
+    assert request.transaction_id == transaction_id, \
+        f"Expected GetTransactionStatusRequest.transactionId {transaction_id}, " \
+        f"got {request.transaction_id}"
+
+    start_task.cancel()

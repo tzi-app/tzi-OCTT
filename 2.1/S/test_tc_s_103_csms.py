@@ -212,3 +212,159 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           [removed: Message: TransactionEventResponse] / [removed: - idTokenInfo.status must be Accepted] /
           [removed: * Step 22:] / [removed: Message: BatterySwapResponse] |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from authorization import validate_id_token_info
+from charge_point import ChargingSession, TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
+VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
+
+# The slots (EVSEs) of the battery swap station: the batteries that the EV Driver brings go
+# into slots 1 and 2, the charged batteries come out of slots 3 and 4.
+BATTERIES_IN = [
+    {'evse_id': 1, 'serial_number': '1234', 'soc': 23, 'soh': 85},
+    {'evse_id': 2, 'serial_number': '5678', 'soc': 45, 'soh': 87},
+]
+BATTERIES_OUT = [
+    {'evse_id': 3, 'serial_number': '4321', 'soc': 80, 'soh': 95},
+    {'evse_id': 4, 'serial_number': '8765', 'soc': 85, 'soh': 78},
+]
+# The idToken of the transaction of a battery in a slot
+NO_AUTHORIZATION = {'id_token': '', 'type': 'NoAuthorization'}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_s_103(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisites (errata 2026-09, 6.3.22): Charging Station supports battery swapping. There
+    # are enough batteries available for swapping. BatterySwapCtrlr.Idtoken is <not set>
+    cp.variables = {'BatterySwapCtrlr.Available': 'true', 'BatterySwapCtrlr.Enabled': 'true'}
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # The scenario is the one of errata 2026-09 (6.3.22).
+    valid_id_token = {'id_token': VALID_ID_TOKEN, 'type': VALID_ID_TOKEN_TYPE}
+
+    # Manual Action: Let CSMS trigger a request for swapping batteries
+    # 1. The CSMS sends a RequestBatterySwapRequest
+    # 2. The Test System responds with a RequestBatterySwapResponse with
+    #    - status Accepted
+    cp.set_response('RequestBatterySwap', status='Accepted')
+    request = await cp.wait_for_request(
+        'RequestBatterySwap',
+        manual_action=send_call(BASIC_AUTH_CP, 'RequestBatterySwap', {
+            'idToken': {'idToken': VALID_ID_TOKEN, 'type': VALID_ID_TOKEN_TYPE},
+            'requestId': 1,
+        }))
+    assert request.request_id is not None, "RequestBatterySwapRequest.requestId must not be omitted"
+    assert request.id_token.id_token == VALID_ID_TOKEN, \
+        f"Expected RequestBatterySwapRequest.idToken.idToken {VALID_ID_TOKEN}, " \
+        f"got {request.id_token.id_token}"
+
+    # Note: Set of two (virtual) batteries are inserted at this point in scenario.
+    # Note: Steps 3 through 6 are repeated for each battery inserted
+    for battery in BATTERIES_IN:
+        # 3. The Test System notifies the CSMS about the status change of the slot.
+        #    - connectorStatus Occupied
+        # 4. The CSMS responds accordingly.
+        await cp.send_connector_status('Occupied', evse_id=battery['evse_id'], connector_id=1)
+
+        # 5. The Test System sends a TransactionEventRequest with
+        #    - eventType Started
+        #    - triggerReason CablePluggedIn
+        #    - idToken.idToken ""
+        #    - idToken.type NoAuthorization
+        #    - evse <i>
+        #    - evse.connectorId 1
+        #    - transactionInfo.transactionId <transactionId>
+        #    - transactionInfo.chargingState EVConnected
+        # 6. The CSMS responds with a TransactionEventResponse
+        slot = ChargingSession()
+        transaction_id = slot.start_transaction()
+        response = await cp.call(call.TransactionEvent(
+            event_type='Started',
+            timestamp=utc_now_iso(),
+            trigger_reason='CablePluggedIn',
+            seq_no=slot.next_seq_no(),
+            transaction_info={'transaction_id': transaction_id, 'charging_state': 'EVConnected'},
+            id_token=NO_AUTHORIZATION,
+            evse={'id': battery['evse_id'], 'connector_id': 1},
+        ))
+        validate_id_token_info('TransactionEventResponse', response.id_token_info, status='Accepted')
+
+    # 7. The Test System sends a BatterySwapRequest with
+    #    - eventType BatteryIn
+    #    - requestId <requestId>
+    #    - idToken.idToken <Configured valid_idtoken_idtoken>
+    #    - batteryData[0]: evseId 1, serialNumber 1234, soC 23, soH 85
+    #    - batteryData[1]: evseId 2, serialNumber 5678, soC 45, soH 87
+    # 8. The CSMS responds with a BatterySwapResponse
+    await cp.call(call.BatterySwap(
+        event_type='BatteryIn', request_id=request.request_id, id_token=valid_id_token,
+        battery_data=BATTERIES_IN))
+
+    # Note: Set of two batteries are extracted at this point in scenario.
+    # Note: Steps 9 through 12 are repeated for each battery taken out
+    for battery in BATTERIES_OUT:
+        # 9.  The Test System notifies the CSMS about the status change of the slot.
+        #     - connectorStatus Available
+        # 10. The CSMS responds accordingly.
+        await cp.send_connector_status('Available', evse_id=battery['evse_id'], connector_id=1)
+
+        # 11. The Charging Station sends a TransactionEventRequest with
+        #     - eventType Ended
+        #     - triggerReason EVCommunicationLost
+        #     - idToken.idToken ""
+        #     - idToken.type NoAuthorization
+        #     - transactionInfo.transactionId <transactionId>
+        #     - transactionInfo.chargingState Idle
+        #     - transactionInfo.stoppedReason EVDisconnected
+        #     It is the transaction in which this battery was charged, which started before this
+        #     scenario: the event is not the first one of its transaction.
+        # 12. The CSMS responds with a TransactionEventResponse
+        slot = ChargingSession()
+        transaction_id = slot.start_transaction()
+        for _ in range(3):
+            slot.next_seq_no()
+        response = await cp.call(call.TransactionEvent(
+            event_type='Ended',
+            timestamp=utc_now_iso(),
+            trigger_reason='EVCommunicationLost',
+            seq_no=slot.next_seq_no(),
+            transaction_info={
+                'transaction_id': transaction_id,
+                'charging_state': 'Idle',
+                'stopped_reason': 'EVDisconnected',
+            },
+            id_token=NO_AUTHORIZATION,
+        ))
+        validate_id_token_info('TransactionEventResponse', response.id_token_info, status='Accepted')
+
+    # 13. The Test System sends a BatterySwapRequest with
+    #     - eventType BatteryOut
+    #     - requestId <requestId>
+    #     - idToken.idToken <Configured valid_idtoken_idtoken>
+    #     - batteryData[0]: evseId 3, serialNumber 4321, soC 80, soH 95
+    #     - batteryData[1]: evseId 4, serialNumber 8765, soC 85, soH 78
+    # 14. The CSMS responds with a BatterySwapResponse
+    await cp.call(call.BatterySwap(
+        event_type='BatteryOut', request_id=request.request_id, id_token=valid_id_token,
+        battery_data=BATTERIES_OUT))
+
+    start_task.cancel()

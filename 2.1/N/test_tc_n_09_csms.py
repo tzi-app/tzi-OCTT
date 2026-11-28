@@ -68,3 +68,72 @@ Tool validations
 Post scenario validations:
     N/A
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from monitoring import MONITORING_VARIABLES
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_09(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisite: CS has implemented device model monitoring and MonitoringCtrlr.Enabled = true.
+    cp.variables = dict(MONITORING_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Request CSMS to install monitors on:
+    #    - EVSE #<Configured evseId>, AvailabilityState, Delta, severity 8
+    #    - ChargingStation, AvailabilityState, Delta, severity 8
+    # 2. Test System responds with: SetVariableMonitoringResponse with
+    #    setMonitoringResult[0].status = Accepted
+    request = await cp.wait_for_request(
+        'SetVariableMonitoring',
+        manual_action=send_call(BASIC_AUTH_CP, 'SetVariableMonitoring', {'setMonitoringData': [
+            {
+                'value': 1,
+                'type': 'Delta',
+                'severity': 8,
+                'component': {'name': 'EVSE', 'evse': {'id': CONFIGURED_EVSE_ID}},
+                'variable': {'name': 'AvailabilityState'},
+            },
+            {
+                'value': 1,
+                'type': 'Delta',
+                'severity': 8,
+                'component': {'name': 'ChargingStation'},
+                'variable': {'name': 'AvailabilityState'},
+            },
+        ]}))
+    monitors = request.set_monitoring_data
+    assert len(monitors) >= 2, f"Expected two setMonitoringData elements, got {len(monitors)}"
+    for index, component in enumerate(('EVSE', 'ChargingStation')):
+        monitor, where = monitors[index], f"setMonitoringData[{index}]"
+        # value = 1 (the recommended value for a Delta monitor), type = Delta, severity = 8
+        assert monitor.value == 1, f"Expected {where}.value 1, got {monitor.value}"
+        assert monitor.type == 'Delta', f"Expected {where}.type Delta, got {monitor.type}"
+        assert monitor.severity == 8, f"Expected {where}.severity 8, got {monitor.severity}"
+        assert monitor.component.name == component, \
+            f"Expected {where}.component.name {component}, got {monitor.component.name}"
+        assert monitor.variable.name == 'AvailabilityState', \
+            f"Expected {where}.variable.name AvailabilityState, got {monitor.variable.name}"
+    evse = monitors[0].component.evse
+    assert evse is not None and evse.id == CONFIGURED_EVSE_ID, \
+        f"Expected setMonitoringData[0].component.evse.id {CONFIGURED_EVSE_ID}, got {evse}"
+
+    start_task.cancel()

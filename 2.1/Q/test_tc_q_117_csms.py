@@ -58,3 +58,77 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import ACTION_TIMEOUT, TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    CHARGING_RATE_UNIT,
+    limit_of,
+    request_charging_profile,
+    v2x_profile,
+    validate_profile,
+)
+from trigger import update_dynamic_schedule
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# The CSMS updates the schedule every 15 seconds
+UPDATE_INTERVAL = 15
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_q_117(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile dynamic charging profile to the
+    #                CS and update the schedule every 15 seconds with
+    #     - operationMode CentralFrequency
+    #     - setpoint -6 * <limit multiplier>
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    setpoint = -limit_of(6)
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, v2x_profile(
+        'TxDefaultProfile', 'Dynamic', {'operationMode': 'CentralFrequency', 'setpoint': setpoint},
+        charging_rate_unit=CHARGING_RATE_UNIT))
+    validate_profile(request, purpose='TxDefaultProfile', kind='Dynamic', stack_level=None)
+    schedule = request.charging_profile.charging_schedule[0]
+    periods = schedule.charging_schedule_period
+    assert len(periods) == 1, f"chargingSchedule[0].chargingSchedulePeriod must be size 1, got {len(periods)}"
+    assert periods[0].start_period == 0, \
+        f"Expected chargingSchedulePeriod[0].startPeriod 0, got {periods[0].start_period}"
+    # setpoint must be -6 * <limit multiplier>: -6 in A, -6000 in W
+    assert periods[0].setpoint == -limit_of(6, schedule.charging_rate_unit), \
+        f"Expected chargingSchedulePeriod[0].setpoint {-limit_of(6, schedule.charging_rate_unit)}, " \
+        f"got {periods[0].setpoint}"
+    profile_id = request.charging_profile.id
+
+    # The CSMS updates the schedule every 15 seconds.
+    cp.set_response('UpdateDynamicSchedule', status='Accepted')
+    cp.forget_requests('UpdateDynamicSchedule')
+    await update_dynamic_schedule(BASIC_AUTH_CP, profile_id, UPDATE_INTERVAL,
+                                  {'limit': limit_of(6), 'setpoint': setpoint})
+
+    # 3. The CSMS sends a UpdateDynamicScheduleRequest
+    # 4. The Test System responds with a UpdateDynamicScheduleResponse with status Accepted
+    update = await cp.wait_for_request('UpdateDynamicSchedule', timeout=UPDATE_INTERVAL + ACTION_TIMEOUT)
+    assert update.charging_profile_id == profile_id, \
+        f"Expected UpdateDynamicScheduleRequest.chargingProfileId {profile_id}, " \
+        f"got {update.charging_profile_id}"
+    assert update.schedule_update.limit is not None, \
+        "UpdateDynamicScheduleRequest.scheduleUpdate.limit must not be omitted"
+
+    start_task.cancel()

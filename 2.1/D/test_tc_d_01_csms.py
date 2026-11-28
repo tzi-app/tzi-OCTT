@@ -53,3 +53,60 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+LOCAL_LIST_VERSION = int(os.environ['LOCAL_LIST_VERSION'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_d_01(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # 1. The CSMS sends a GetLocalListVersionRequest
+    # 2. The Test System responds with a GetLocalListVersionResponse with versionNumber 1
+    # This step is optional: when the CSMS asks for the version, the station answers it.
+    cp.local_list_version = LOCAL_LIST_VERSION
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 3. The CSMS sends a SendLocalListRequest
+    # 4. The Test System responds with a SendLocalListResponse with status Accepted
+    request = await cp.wait_for_request(
+        'SendLocalList',
+        manual_action=send_call(BASIC_AUTH_CP, 'SendLocalList', {
+            'versionNumber': LOCAL_LIST_VERSION + 1,
+            'updateType': 'Full',
+            'localAuthorizationList': [
+                {
+                    'idToken': {'idToken': 'D001001', 'type': 'Central'},
+                    'idTokenInfo': {'status': 'Accepted'},
+                },
+                {
+                    'idToken': {'idToken': 'D001002', 'type': 'Central'},
+                    'idTokenInfo': {'status': 'Accepted'},
+                },
+            ],
+        }))
+
+    assert request.update_type == 'Full', f"Expected updateType Full, got: {request.update_type}"
+    assert request.version_number > 0, f"Expected versionNumber > 0, got: {request.version_number}"
+    assert request.local_authorization_list, "Expected a localAuthorizationList that is not empty"
+    for index, authorization_data in enumerate(request.local_authorization_list):
+        assert authorization_data.id_token_info, \
+            f"localAuthorizationList[{index}] has no idTokenInfo: {authorization_data}"
+
+    start_task.cancel()

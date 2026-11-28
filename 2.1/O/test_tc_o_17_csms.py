@@ -35,3 +35,36 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from display_messages import display_message, request_display_message, validate_message
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_o_17(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a SetDisplayMessageRequest
+    # 2. The Test System responds with a SetDisplayMessageResponse with status
+    #    NotSupportedPriority
+    request = await request_display_message(cp, display_message(), status='NotSupportedPriority')
+    # message.id <Generated Id>, message.priority <Configured priority>
+    validate_message(request)
+
+    start_task.cancel()

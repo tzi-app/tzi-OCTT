@@ -72,3 +72,62 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           ExternalConstraints, LocalGeneration or a TxDefaultProfile. / Note, that a TxDefaultProfile is not
           applied to EVSE #0 but to all individual EVSEs (see K01.FR.14). |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import CONFIGURED_NUMBER_OF_EVSES, TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import (
+    CHARGING_LIMIT_SOURCE,
+    CHARGING_PROFILE_ID,
+    CHARGING_PROFILE_PURPOSE,
+    reported_profile,
+    request_charging_profiles_report,
+    validate_get_charging_profiles,
+)
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_31(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a GetChargingProfilesRequest
+    # 2. The Test System responds with a GetChargingProfilesResponse with
+    #    - status Accepted
+    request = await request_charging_profiles_report(cp, chargingProfilePurpose=CHARGING_PROFILE_PURPOSE)
+    # evseId must be omitted, chargingProfile.chargingProfilePurpose <Configured
+    # chargingProfilePurpose>; stackLevel, chargingLimitSource and chargingProfileId must be
+    # omitted
+    validate_get_charging_profiles(request, purpose=CHARGING_PROFILE_PURPOSE)
+
+    # 3. The Test System sends a ReportChargingProfilesRequest with
+    #    - requestId <Received requestId> AND
+    #    - tbc true AND
+    #    - evseId i
+    # 4. The CSMS responds with a ReportChargingProfilesResponse
+    # Note(s): Step 3 and 4 are repeated for every evse
+    # The report of the last EVSE ends the sequence: it has tbc false.
+    for evse_id in range(1, CONFIGURED_NUMBER_OF_EVSES + 1):
+        await cp.call(call.ReportChargingProfiles(
+            request_id=request.request_id,
+            charging_limit_source=CHARGING_LIMIT_SOURCE,
+            evse_id=evse_id,
+            charging_profile=[reported_profile(CHARGING_PROFILE_ID + evse_id - 1)],
+            tbc=evse_id < CONFIGURED_NUMBER_OF_EVSES,
+        ))
+
+    start_task.cancel()

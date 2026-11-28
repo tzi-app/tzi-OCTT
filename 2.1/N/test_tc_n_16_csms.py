@@ -35,3 +35,38 @@ Tool validations
 Post scenario validations:
     N/A
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_16(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Instruct CSMS to set a monitoring level with severity = 4
+    # 2. Test System responds with: SetMonitoringLevelResponse with
+    #    - Status is Accepted
+    cp.set_response('SetMonitoringLevel', status='Accepted')
+    request = await cp.wait_for_request(
+        'SetMonitoringLevel',
+        manual_action=send_call(BASIC_AUTH_CP, 'SetMonitoringLevel', {'severity': 4}))
+    assert request.severity == 4, f"Expected SetMonitoringLevelRequest.severity 4, got {request.severity}"
+
+    start_task.cancel()

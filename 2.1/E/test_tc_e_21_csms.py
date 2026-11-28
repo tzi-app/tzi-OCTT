@@ -53,3 +53,60 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_21(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(cp)
+
+    # Manual Action: Trigger the CSMS to request the Charging Station to stop the ongoing
+    #                transaction.
+    # 1. The CSMS sends a RequestStopTransactionRequest
+    # 2. The Test System responds with a RequestStopTransactionResponse with status Accepted
+    request = await cp.wait_for_request(
+        'RequestStopTransaction',
+        manual_action=send_call(BASIC_AUTH_CP, 'RequestStopTransaction',
+                                {'transactionId': transaction_id}))
+    assert request.transaction_id == transaction_id, \
+        f"Expected RequestStopTransactionRequest.transactionId {transaction_id}, " \
+        f"got {request.transaction_id}"
+
+    # 3. The Test System sends a TransactionEventRequest.
+    #    with triggerReason is RemoteStop
+    #    transactionInfo.stoppedReason is Remote
+    #    eventType is Ended
+    # 4. The CSMS responds with a TransactionEventResponse.
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='RemoteStop',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'stopped_reason': 'Remote'},
+    ))
+
+    start_task.cancel()

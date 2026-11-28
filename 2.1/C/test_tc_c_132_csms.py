@@ -57,3 +57,54 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
         The hardcoded value used for WebPaymentsCtrlr.SharedSecret ("mysharedsecret") has been replaced with a
         configurable variable <Configured sharedsecret>.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from payment import qr_code_url, totp_v1, web_payments_ctrlr_variables
+from reusable_states.booted import booted
+from trigger import qr_code_payment
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+# WebPaymentsCtrlr.SharedSecret: <Configured sharedsecret> (errata 2026-09, 6.3.11)
+QR_CODE_SHARED_SECRET = os.environ['QR_CODE_SHARED_SECRET']
+
+MAX_ENERGY = 20000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_132(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisites: the Test System has WebPaymentsCtrlr.Enabled true, URLTemplate
+    # <base-url>/{chargingstationid}/{evse}/{totp}/{version}, ValidityTime 30, Length 8 and
+    # TOTPVersion 1.
+    cp.variables = web_payments_ctrlr_variables()
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Trigger CSMS to perform a payment and start a transaction via QR code
+    #                webpage
+    #     maxenergy is 20000
+    #     qrUrl is <Configured QR base url> extended with:
+    #     {chargingstationId} is <omitted>
+    #     {totp} is <valid totp>
+    #     {evseId} is <configured evse>
+    #     {version} is 1
+    # 1. The CSMS does NOT send a RequestStartTransactionRequest
+    #    The CSMS detects that not all path parameters from URLTemplate are present. It does
+    #    not forward the EV Driver to the PSP, and does not authorize the EV Driver to charge.
+    qr_url = qr_code_url(None, CONFIGURED_EVSE_ID, totp_v1(QR_CODE_SHARED_SECRET),
+                         max_energy=MAX_ENERGY)
+    await cp.expect_no_request('RequestStartTransaction', manual_action=qr_code_payment(qr_url))
+
+    start_task.cancel()

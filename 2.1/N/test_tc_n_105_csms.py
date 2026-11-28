@@ -116,3 +116,139 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Message AdjustPeriodicEventStreamRequest / id must be 2 / params.interval must be [removed: 15] 10 /
           params.values must be [removed: 45] 20 |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from monitoring import MONITORING_VARIABLES
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from trigger import send_call
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+# The id that the Test System gives the monitor of step 1, and the id of its event stream
+MONITOR_ID = 3
+STREAM_ID = 2
+
+
+async def send_periodic_event_stream(cp, interval, values):
+    """The Test System sends a NotifyPeriodicEventStream using RPC framework SEND, with the
+    values of the monitored variable of the last interval. The CSMS does not respond with any
+    message when it receives it."""
+    unique_id = await cp.send_unconfirmed('NotifyPeriodicEventStream', {
+        'id': STREAM_ID,
+        'pending': 0,
+        'basetime': utc_now_iso(-interval),
+        'data': [{'t': float(second), 'v': str(1000.0 + second)} for second in range(values)],
+    })
+    await asyncio.sleep(1)
+    responses = [message for message in cp.unexpected_responses if message[1] == unique_id]
+    assert not responses, \
+        f"The CSMS responded to the NotifyPeriodicEventStream that was sent with SEND: {responses}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_105(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System has implemented device model monitoring.
+    cp.variables = dict(MONITORING_VARIABLES)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # The scenario is the one of errata 2026-09 (6.3.19).
+
+    # Manual Action: Request CSMS to install a monitor on: component.name EVSE, EVSE.id
+    #                <Configured evseId>, variable.name Power, type Periodic, severity 8, value 5,
+    #                periodicEventStream.interval 5, periodicEventStream.values 10
+    # 1. CSMS sends a SetVariableMonitoringRequest
+    # 2. Test System responds with: SetVariableMonitoringResponse with
+    #    setMonitoringResult[0].status = Accepted
+    cp.set_response('SetVariableMonitoring', lambda request: {'set_monitoring_result': [
+        {'id': MONITOR_ID + index, 'status': 'Accepted', 'type': item.type, 'severity': item.severity,
+         'component': item.component, 'variable': item.variable}
+        for index, item in enumerate(request.set_monitoring_data)]})
+    request = await cp.wait_for_request(
+        'SetVariableMonitoring',
+        manual_action=send_call(BASIC_AUTH_CP, 'SetVariableMonitoring', {'setMonitoringData': [{
+            'value': 5,
+            'type': 'Periodic',
+            'severity': 8,
+            'component': {'name': 'EVSE', 'evse': {'id': CONFIGURED_EVSE_ID}},
+            'variable': {'name': 'Power'},
+            'periodicEventStream': {'interval': 5, 'values': 10},
+        }]}))
+    monitor = request.set_monitoring_data[0]
+    assert monitor.type == 'Periodic', f"Expected setMonitoringData[0].type Periodic, got {monitor.type}"
+    assert monitor.severity == 8, f"Expected setMonitoringData[0].severity 8, got {monitor.severity}"
+    assert monitor.component.name == 'EVSE', \
+        f"Expected setMonitoringData[0].component.name EVSE, got {monitor.component.name}"
+    assert monitor.component.evse is not None and monitor.component.evse.id == CONFIGURED_EVSE_ID, \
+        f"Expected setMonitoringData[0].component.evse.id {CONFIGURED_EVSE_ID}, got {monitor.component.evse}"
+    assert monitor.variable.name == 'Power', \
+        f"Expected setMonitoringData[0].variable.name Power, got {monitor.variable.name}"
+    assert monitor.value == 5, f"Expected setMonitoringData[0].value 5, got {monitor.value}"
+    stream = monitor.periodic_event_stream
+    assert stream is not None and stream.interval == 5 and stream.values == 10, \
+        f"Expected setMonitoringData[0].periodicEventStream interval 5 and values 10, got {stream}"
+
+    # 3. Test System sends a OpenPeriodicEventStreamRequest with
+    #    - constantStreamData.id 2
+    #    - constantStreamData.variableMonitoringId <monitor id from step 1>
+    #    - constantStreamData.params.interval 5
+    #    - constantStreamData.params.values 10
+    # 4. CSMS responds with a OpenPeriodicEventStreamResponse
+    response = await cp.call(call.OpenPeriodicEventStream(constant_stream_data={
+        'id': STREAM_ID,
+        'variable_monitoring_id': MONITOR_ID,
+        'params': {'interval': 5, 'values': 10},
+    }))
+    assert response.status == 'Accepted', \
+        f"Expected OpenPeriodicEventStreamResponse.status Accepted, got {response.status}"
+
+    # Note: The Test System waits 5 seconds.
+    # 5. Test System sends a NotifyPeriodicEventStream using RPC framework SEND
+    await asyncio.sleep(5)
+    await send_periodic_event_stream(cp, interval=5, values=10)
+
+    # Manual Action: Request the CSMS to reconfigure the periodic event stream [to an interval of
+    #                10 s and 20 values: the ones that the tool validation of the errata has]
+    # 6. CSMS sends a AdjustPeriodicEventStreamRequest
+    # 7. Test System responds with a AdjustPeriodicEventStreamResponse with
+    #    - status Accepted
+    cp.set_response('AdjustPeriodicEventStream', status='Accepted')
+    request = await cp.wait_for_request(
+        'AdjustPeriodicEventStream',
+        manual_action=send_call(BASIC_AUTH_CP, 'AdjustPeriodicEventStream', {
+            'id': STREAM_ID,
+            'params': {'interval': 10, 'values': 20},
+        }))
+    assert request.id == STREAM_ID, \
+        f"Expected AdjustPeriodicEventStreamRequest.id {STREAM_ID}, got {request.id}"
+    assert request.params.interval == 10, \
+        f"Expected AdjustPeriodicEventStreamRequest.params.interval 10, got {request.params.interval}"
+    assert request.params.values == 20, \
+        f"Expected AdjustPeriodicEventStreamRequest.params.values 20, got {request.params.values}"
+
+    # Note: The Test System waits 10 seconds.
+    # 8. Test System sends a NotifyPeriodicEventStream using RPC framework SEND
+    await asyncio.sleep(10)
+    await send_periodic_event_stream(cp, interval=10, values=20)
+
+    # 9.  Test System sends a ClosePeriodicEventStreamRequest with
+    #     - constantStreamData.id 2
+    # 10. CSMS responds with a ClosePeriodicEventStreamResponse
+    await cp.call(call.ClosePeriodicEventStream(id=STREAM_ID))
+
+    start_task.cancel()

@@ -158,3 +158,98 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
 
         Figure 27. Authorization using Contract Certificates with ISO 15118-20
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from authorization import validate_id_token_info
+from charge_point import TziChargePoint21
+from contract_pki import contract_chain_hash_data, contract_chain_with_issuers
+from mock_ocsp_responder import MockOCSPResponder
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from reusable_states.ev_connected_pre_session import ev_connected_pre_session
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+# The configured eMAID: known by the CSMS as valid, and the CN of the configured contract
+# certificate
+EMAID_ID_TOKEN = {'id_token': os.environ['EMAID_ID_TOKEN'], 'type': 'eMAID'}
+
+# The OCSP service of the Test System, which the responder URL of the hash data points to
+OCSP_PORT = 19080
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_50(connection):
+    ocsp_responder = MockOCSPResponder(port=OCSP_PORT, cert_status="good")
+    ocsp_responder.start()
+    try:
+        assert connection.open
+        cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+        start_task = asyncio.create_task(cp.start())
+        await booted(cp)
+
+        # Reusable State: State is EVConnectedPreSession
+        transaction_id = await ev_connected_pre_session(cp)
+
+        # 1. The Test System sends an AuthorizeRequest with:
+        #    - idToken.idToken <Configured eMAID>
+        #    - idToken.type eMAID
+        #    - iso15118CertificateHashData contains <hashes from configured (V2G) certificate
+        #      chain>: the contract certificate and its sub-CA
+        # 2. The CSMS sends an OCSP request to responder URL of iso15118CertificateHashData to
+        #    check validity
+        # 3. The Test System OCSP service responds that certificate is valid.
+        # 4. The CSMS responds with a AuthorizeResponse
+        response = await cp.send_authorization_request_with_iso15118(
+            id_token=EMAID_ID_TOKEN['id_token'],
+            token_type=EMAID_ID_TOKEN['type'],
+            iso15118_certificate_hash_data=contract_chain_hash_data(f"http://localhost:{OCSP_PORT}/ocsp"),
+        )
+
+        # Step 2: CSMS sends an OCSP request for iso15118CertificateHashData
+        assert ocsp_responder.requests_received > 0, \
+            "The CSMS did not send an OCSP request to the responder URL of the hash data"
+        # Step 3: Test System checks that received request for iso15118CertificateHashData is
+        # valid: it is about a certificate of the hash data
+        for request in ocsp_responder.requests:
+            assert any(request.is_about(certificate, issuer)
+                       for certificate, issuer in contract_chain_with_issuers()), \
+                f"OCSP request about a certificate that is not in the hash data " \
+                f"(serial {request.serial_number:X})"
+
+        # Step 4: idTokenInfo.status Accepted, certificateStatus Accepted
+        validate_id_token_info('AuthorizeResponse', response.id_token_info, status='Accepted')
+        assert response.certificate_status == 'Accepted', \
+            f"Expected AuthorizeResponse.certificateStatus Accepted, got {response.certificate_status}"
+
+        # 5. The Test System sends a TransactionEventRequest with triggerReason Authorized
+        # 6. The CSMS responds with a TransactionEventResponse
+        response = await cp.call(call.TransactionEvent(
+            event_type='Updated',
+            timestamp=utc_now_iso(),
+            trigger_reason='Authorized',
+            seq_no=cp.next_seq_no(),
+            transaction_info={'transaction_id': transaction_id},
+            id_token=EMAID_ID_TOKEN,
+        ))
+        validate_id_token_info('TransactionEventResponse', response.id_token_info, status='Accepted')
+        cp.session.state = 'Authorized'
+        cp.session.authorized = True
+        cp.session.id_token = EMAID_ID_TOKEN
+
+        # Execute Reusable State EnergyTransferStarted
+        await energy_transfer_started(cp)
+
+        start_task.cancel()
+    finally:
+        ocsp_responder.stop()

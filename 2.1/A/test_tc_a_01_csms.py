@@ -79,3 +79,41 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_a_01(connection):
+    # 1. The Test System sends a HTTP upgrade request with an Authorization header:
+    #    Basic <Base64 encoded(<Configured ChargingStationId>:<Configured BasicAuthPassword>)>
+    # 2. The CSMS validates the username/password combination AND upgrades the connection to a
+    #    (secured) WebSocket connection.
+    assert connection.open
+
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+
+    # 3. The Test System sends a BootNotificationRequest
+    # 4. The CSMS responds with a BootNotificationResponse
+    boot_response = await cp.send_boot_notification()
+    assert boot_response.status == 'Accepted', \
+        f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+    # 5. The Test System notifies the CSMS about the current state of all connectors.
+    # 6. The CSMS responds accordingly.
+    await cp.send_all_connectors_status('Available')
+
+    start_task.cancel()

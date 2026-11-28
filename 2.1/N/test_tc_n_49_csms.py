@@ -31,3 +31,37 @@ N/a
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_49(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The Test System sends a NotifyEventRequest with
+    #    - eventData.cleared true
+    #    The threshold monitor that was triggered before the reboot is no longer exceeded.
+    # 2. The CSMS responds with a NotifyEventResponse.
+    await cp.send_event({'name': 'EVSE', 'evse': {'id': CONFIGURED_EVSE_ID}}, 'Power', '0',
+                        trigger='Alerting', event_notification_type='CustomMonitor',
+                        variable_monitoring_id=1, cleared=True)
+
+    start_task.cancel()

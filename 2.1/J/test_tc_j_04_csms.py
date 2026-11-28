@@ -44,3 +44,52 @@ N/a
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from metering import EnergyMeter, MeterValueSampler
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from reusable_states.ev_disconnected import ev_disconnected
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+TX_ENDED_METER_VALUES_INTERVAL = int(os.environ['TX_ENDED_METER_VALUES_INTERVAL'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_j_04(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    await energy_transfer_started(cp)
+    # From here the station keeps the signed clock-aligned readings of the meter for the end of
+    # the transaction: one every <configured clock-aligned Tx ended Meter Values interval>.
+    sampler = MeterValueSampler(EnergyMeter(power=11000), TX_ENDED_METER_VALUES_INTERVAL,
+                                context='Sample.Clock', clock_aligned=True, signed=True)
+
+    # 1. Execute Reusable State EVDisconnected
+    #    - The TransactionEventRequest containing eventType Ended contains the MeterValue field.
+    #    - timestamp <The intervals between the timestamps of the received Meter Value messages
+    #      equals the configured value at configured clock-aligned Tx ended Meter Values
+    #      interval>.
+    #    - sampledValue.context is Sample.Clock AND the last one has Transaction.End
+    #    - sampledValue.signedMeterValue is <Generated SignedMeterValueType>
+    #    Note(s):
+    #    - This step will be executed after the <Configured transaction duration> is reached
+    #      (the wait of the state StopAuthorized).
+    #    - This causes the transaction to stop.
+    await ev_disconnected(cp, meter_value=sampler.stop)
+
+    start_task.cancel()

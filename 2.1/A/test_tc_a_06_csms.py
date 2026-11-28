@@ -106,3 +106,76 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           certificate according to the path validation rules established in Section 6 of [3] and Section 4 of
           [26]. (Same as A00.FR.308) | |
 """
+
+import asyncio
+import logging
+import os
+import ssl
+
+import pytest
+
+from charge_point import TziChargePoint21, connect_to_csms
+from security import connect_with_profile, headers_for, ssl_context_for
+
+SECURITY_PROFILE_2_CP = os.environ['CP21_SP2']
+SECURITY_PROFILE_3_CP = os.environ['CP21_SP3']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("security_profile", [2, 3])
+async def test_tc_a_06(security_profile):
+    cp_id = SECURITY_PROFILE_2_CP if security_profile == 2 else SECURITY_PROFILE_3_CP
+
+    # 1. The Test System initiates a TLS handshake with a TLS version lower than 1.2 and sends
+    #    a Client Hello to the CSMS.
+    # 2. The CSMS notices that the TLS version is lower than 1.2 and terminates the connection.
+    #
+    # The client has to be able to offer such a version. Python sets TLS 1.2 as the minimum
+    # version, and OpenSSL 3 disables TLS 1.0 and 1.1 above security level 0. Without the
+    # settings below, the handshake fails in the client, before a Client Hello reaches the
+    # CSMS.
+    low_tls_ctx = ssl_context_for(security_profile)
+    low_tls_ctx.check_hostname = False
+    low_tls_ctx.verify_mode = ssl.CERT_NONE
+    low_tls_ctx.minimum_version = ssl.TLSVersion.TLSv1
+    low_tls_ctx.maximum_version = ssl.TLSVersion.TLSv1_1
+    low_tls_ctx.set_ciphers('DEFAULT:@SECLEVEL=0')
+
+    with pytest.raises((ssl.SSLError, ConnectionError)) as terminated:
+        ws = await connect_to_csms(
+            cp_id, headers=headers_for(cp_id, security_profile), ssl_context=low_tls_ctx)
+        await ws.close()
+
+    # Check that the CSMS terminated the connection, and that the client did not give up before
+    # sending its Client Hello.
+    assert getattr(terminated.value, 'reason', None) != 'NO_PROTOCOLS_AVAILABLE', \
+        f"The client could not offer a TLS version lower than 1.2: {terminated.value}"
+    logging.info(f"CSMS terminated the TLS < 1.2 handshake: {terminated.value}")
+
+    # 3-6. TLS handshake with TLS version 1.2 or higher. The client certificate is only sent
+    #      when the CSMS uses security profile 3.
+    # 7.   The Test System sends a HTTP upgrade request to the CSMS. It only contains a
+    #      username/password combination when the CSMS uses security profile 2.
+    # 8.   The CSMS upgrades the connection to a (secured) WebSocket connection.
+    ws = await connect_with_profile(cp_id, security_profile)
+    try:
+        cp = TziChargePoint21(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
+
+        # 9.  The Test System sends a BootNotificationRequest with reason PowerUp, the
+        #     configured model and the configured vendorName
+        # 10. The CSMS responds with a BootNotificationResponse with status Accepted
+        boot_response = await cp.send_boot_notification(reason='PowerUp')
+        assert boot_response.status == 'Accepted', \
+            f"Expected BootNotificationResponse.status Accepted, got {boot_response.status}"
+
+        # 11. The Test System notifies the CSMS about the current state of all connectors.
+        #     StatusNotificationRequest - connectorStatus Available
+        #     NotifyEventRequest - trigger Delta, actualValue "Available",
+        #                          component.name "Connector", variable.name "AvailabilityState"
+        # 12. The CSMS responds accordingly.
+        await cp.send_all_connectors_status('Available')
+
+        start_task.cancel()
+    finally:
+        await ws.close()

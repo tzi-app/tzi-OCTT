@@ -132,3 +132,96 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           2147400000 |
         | Post scenario validations: / - N/a |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import charging_profile, request_charging_profile
+from trigger import send_call, set_variables
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+def max_external_constraints_id(value):
+    """The SetVariableData that sets SmartChargingCtrlr.MaxExternalConstraintsId."""
+    return [{
+        'component': {'name': 'SmartChargingCtrlr'},
+        'variable': {'name': 'MaxExternalConstraintsId'},
+        'attributeValue': str(value),
+    }]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_109(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # The scenario is the one of errata 2026-09 (6.3.15): the CSMS sets MaxExternalConstraintsId
+    # itself, with a SetVariablesRequest, instead of reading it in a base report.
+
+    # Manual Action: Configure variable MaxExternalConstraintsId on the CSMS
+    # 1. The CSMS sends SetVariablesRequest with:
+    #    - variable.name MaxExternalConstraintsId
+    #    - component.name SmartChargingCtrlr
+    #    - attributeValue 10
+    # 2. The Test System responds with SetVariablesResponse
+    await cp.wait_for_request(
+        'SetVariables', manual_action=set_variables(BASIC_AUTH_CP, max_external_constraints_id(10)))
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile Charging Profile
+    # 3. The CSMS sends a SetChargingProfileRequest
+    # 4. The Test System responds with a SetChargingProfileResponse with status Accepted
+    # The request to the CSMS has no id for the charging profile: the CSMS chooses it (K01.FR.80).
+    first = await request_charging_profile(
+        cp, CONFIGURED_EVSE_ID, charging_profile('TxDefaultProfile', 'Absolute', 6, profile_id=None))
+    assert first.charging_profile.id > 10, \
+        f"chargingProfile.id must be greater than 10 (MaxExternalConstraintsId), " \
+        f"got {first.charging_profile.id}"
+
+    # Manual Action: Request the CSMS to clear the charging profile with <chargingProfileId from
+    #                step 3>
+    # 5. The CSMS sends a ClearChargingProfileRequest with
+    #    - chargingProfileId <chargingProfileId from step 3> AND
+    #    - chargingProfileCriteria omit
+    # 6. The Test System responds with a ClearChargingProfileResponse with status Accepted
+    cp.set_response('ClearChargingProfile', status='Accepted')
+    clear = await cp.wait_for_request(
+        'ClearChargingProfile',
+        manual_action=send_call(BASIC_AUTH_CP, 'ClearChargingProfile',
+                                {'chargingProfileId': first.charging_profile.id}))
+    assert clear.charging_profile_id == first.charging_profile.id, \
+        f"Expected ClearChargingProfileRequest.chargingProfileId {first.charging_profile.id}, " \
+        f"got {clear.charging_profile_id}"
+
+    # Manual Action: Configure variable MaxExternalConstraintsId on the CSMS
+    # 7. The CSMS sends SetVariablesRequest with:
+    #    - variable.name MaxExternalConstraintsId
+    #    - component.name SmartChargingCtrlr
+    #    - attributeValue 2147400000
+    # 8. The Test System responds with SetVariablesResponse
+    await cp.wait_for_request(
+        'SetVariables',
+        manual_action=set_variables(BASIC_AUTH_CP, max_external_constraints_id(2147400000)))
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile Charging Profile
+    # 9. The CSMS sends a SetChargingProfileRequest
+    # 10. The Test System responds with a SetChargingProfileResponse with status Accepted
+    second = await request_charging_profile(
+        cp, CONFIGURED_EVSE_ID, charging_profile('TxDefaultProfile', 'Absolute', 6, profile_id=None))
+    assert second.charging_profile.id > 2147400000, \
+        f"chargingProfile.id must be greater than 2147400000 (MaxExternalConstraintsId), " \
+        f"got {second.charging_profile.id}"
+
+    start_task.cancel()

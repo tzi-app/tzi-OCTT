@@ -127,3 +127,86 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Ended) message with triggerReason = ResetCommand and transactionInfo.stoppedReason = ImmediateReset
           before resetting the EVSE. | |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from trigger import reset
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+CONFIGURED_CONNECTOR_ID = int(os.environ['CONFIGURED_CONNECTOR_ID'])
+VALID_ID_TOKEN = os.environ['VALID_ID_TOKEN']
+VALID_ID_TOKEN_TYPE = os.environ['VALID_ID_TOKEN_TYPE']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_26(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is EnergyTransferStarted
+    transaction_id = await energy_transfer_started(
+        cp, evse_id=CONFIGURED_EVSE_ID, connector_id=CONFIGURED_CONNECTOR_ID,
+        id_token=VALID_ID_TOKEN, id_token_type=VALID_ID_TOKEN_TYPE)
+
+    # Manual Action: Request the CSMS to reboot the charging EVSE with status OnIdle
+    # 1. The CSMS sends a ResetRequest with status OnIdle and evseId <Configured evseId>
+    # 2. The Test System responds with a ResetResponse with status Scheduled
+    cp.set_response('Reset', status='Scheduled')
+    reset_request = await cp.wait_for_request(
+        'Reset', manual_action=reset(BASIC_AUTH_CP, 'OnIdle', evse_id=CONFIGURED_EVSE_ID))
+    assert reset_request.type == 'OnIdle', \
+        f"Expected ResetRequest.type OnIdle, got: {reset_request.type}"
+    assert reset_request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected ResetRequest.evseId {CONFIGURED_EVSE_ID}, got: {reset_request.evse_id}"
+
+    # 3. The Test System sends a TransactionEventRequest.
+    #    - eventType Updated
+    #    - triggerReason StopAuthorized
+    #    - transactionInfo.chargingState EVConnected
+    #    - idToken.idToken <Configured valid_idtoken_idtoken>
+    #    - idToken.type <Configured valid_idtoken_type>
+    # 4. The CSMS responds with a TransactionEventResponse.
+    await cp.call(call.TransactionEvent(
+        event_type='Updated',
+        timestamp=utc_now_iso(),
+        trigger_reason='StopAuthorized',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'charging_state': 'EVConnected'},
+        id_token={'id_token': VALID_ID_TOKEN, 'type': VALID_ID_TOKEN_TYPE},
+    ))
+
+    # 5. The Test System sends a TransactionEventRequest.
+    #    - eventType Ended
+    #    - triggerReason EVCommunicationLost
+    #    - transactionInfo.chargingState Idle
+    #    - transactionInfo.stoppedReason EVDisconnected
+    # 6. The CSMS responds with a TransactionEventResponse.
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='EVCommunicationLost',
+        seq_no=cp.next_seq_no(),
+        transaction_info={
+            'transaction_id': transaction_id,
+            'charging_state': 'Idle',
+            'stopped_reason': 'EVDisconnected',
+        },
+    ))
+
+    start_task.cancel()

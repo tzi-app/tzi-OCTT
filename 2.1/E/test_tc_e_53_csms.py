@@ -45,3 +45,55 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from reusable_states.energy_transfer_started import energy_transfer_started
+from reusable_states.ev_disconnected import ev_disconnected
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+def started_events(cp):
+    """The TransactionEventRequests with eventType Started that the station has sent."""
+    return [payload for action, payload in cp.sent_requests
+            if action == 'TransactionEvent' and payload['eventType'] == 'Started']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_53(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Execute Reusable State EnergyTransferStarted
+    #    Note(s): New transaction will use seqNo 0 for the first TransactionEventRequest.
+    first_transaction_id = await energy_transfer_started(cp)
+    # The CSMS accepted the TransactionEventRequest with eventType = Started and seqNo = 0, and
+    # answered it with a TransactionEventResponse: otherwise the state had failed.
+    assert [event['seqNo'] for event in started_events(cp)] == [0]
+
+    # 2. Execute Reusable State EVDisconnected
+    await ev_disconnected(cp)
+
+    # 3. Execute Reusable State EnergyTransferStarted
+    #    Note(s): New transaction will use seqNo 0 for the first TransactionEventRequest.
+    second_transaction_id = await energy_transfer_started(cp)
+    assert second_transaction_id != first_transaction_id
+    assert [event['seqNo'] for event in started_events(cp)] == [0, 0]
+
+    # 4. Execute Reusable State EVDisconnected
+    await ev_disconnected(cp)
+
+    start_task.cancel()

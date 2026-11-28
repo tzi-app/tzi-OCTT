@@ -40,3 +40,51 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from display_messages import (
+    display_message,
+    OTHER_LANGUAGE,
+    request_display_message,
+    validate_message,
+)
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_o_100(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Prerequisite: CSMS support multiple languages.
+    # Manual Action: Request the CSMS to send a SetDisplayMessageRequest with a certain language.
+    #                Test System will respond that the language is not supported.
+    # 1. The CSMS sends a SetDisplayMessageRequest
+    # 2. The Test System responds with a SetDisplayMessageResponse with status
+    #    LanguageNotSupported
+    request = await request_display_message(
+        cp, display_message(language=OTHER_LANGUAGE), status='LanguageNotSupported')
+    # message.id <Generated Id>, message.priority <Configured Priority>, message.message.language
+    # <Not omitted>
+    validate_message(request)
+    assert request.message.message.language is not None, \
+        "SetDisplayMessageRequest.message.message.language must not be omitted"
+
+    # Manual Action: Verify that CSMS UI reports that message was not accepted due to unknown
+    #                language. That is a check in the CSMS itself.
+
+    start_task.cancel()

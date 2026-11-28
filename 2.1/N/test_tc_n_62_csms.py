@@ -42,3 +42,50 @@ Tool validations
 Post scenario validations:
     - N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from diagnostics import request_customer_information, validate_customer_information
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_62(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Prerequisite: The CSMS supports retrieving / deleting CustomerInformation -
+    # CustomerIdentifier
+    # 1. The CSMS sends a CustomerInformationRequest
+    # 2. The Test System responds with a CustomerInformationResponse with status Accepted
+    request = await request_customer_information(
+        cp, report=True, clear=True, customer_identifier='OpenChargeAlliance')
+    validate_customer_information(request, report=True, clear=True)
+    assert request.customer_identifier == 'OpenChargeAlliance', \
+        f"Expected CustomerInformationRequest.customerIdentifier \"OpenChargeAlliance\", " \
+        f"got {request.customer_identifier}"
+    assert request.id_token is None, \
+        f"CustomerInformationRequest.idToken must be omitted, got {request.id_token}"
+    assert request.customer_certificate is None, \
+        f"CustomerInformationRequest.customerCertificate must be omitted, got {request.customer_certificate}"
+
+    # 3. The Test System sends a NotifyCustomerInformationRequest
+    # 4. The CSMS responds with a NotifyCustomerInformationResponse
+    await cp.send_notify_customer_information(
+        data='Customer OpenChargeAlliance: 1 authorization cache entry', seq_no=0,
+        request_id=request.request_id)
+
+    start_task.cancel()

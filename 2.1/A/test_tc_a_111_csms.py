@@ -42,3 +42,46 @@ N/a
 Post scenario validations:
     The Test System and the CSMS are connected.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.renew_charging_station_certificate import renew_charging_station_certificate
+from security import client_certificate_files, connect_with_profile
+
+SECURITY_PROFILE_3_CP = os.environ['CP21_SP3']
+
+
+@pytest.mark.asyncio
+async def test_tc_a_111():
+    cp_id = SECURITY_PROFILE_3_CP
+
+    ws = await connect_with_profile(cp_id, security_profile=3)
+    try:
+        cp = TziChargePoint21(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
+
+        # 1. Execute Reusable State RenewChargingStationCertificate (With requestId): the
+        #    SignCertificateRequest has a requestId, and the CSMS includes it in the
+        #    resulting CertificateSignedRequest (A02.FR.25).
+        certificate_chain, private_key = await renew_charging_station_certificate(
+            cp, with_request_id=True)
+
+        start_task.cancel()
+    finally:
+        # 2. The Test System disconnects its current connection ...
+        await ws.close()
+
+    # 2. ... and reconnects to the CSMS with the new certificate.
+    # 3. The CSMS accepts the incoming connection request using the new certificate.
+    with client_certificate_files(certificate_chain, private_key) as (new_cert, new_key):
+        ws = await connect_with_profile(
+            cp_id, security_profile=3, client_cert=new_cert, client_key=new_key)
+        try:
+            # Post scenario validation: the Test System and the CSMS are connected.
+            assert ws.open, "The CSMS must accept the connection with the new certificate"
+        finally:
+            await ws.close()

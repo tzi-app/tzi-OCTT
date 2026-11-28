@@ -42,3 +42,47 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from trigger import trigger_message
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_f_11(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. The CSMS sends a TriggerMessageRequest
+    # 2. The Test System responds with a TriggerMessageResponse with status Accepted
+    cp.set_response('TriggerMessage', status='Accepted')
+    request = await cp.wait_for_request(
+        'TriggerMessage',
+        manual_action=trigger_message(BASIC_AUTH_CP, 'MeterValues', evse_id=CONFIGURED_EVSE_ID))
+    assert request.requested_message == 'MeterValues', \
+        f"Expected TriggerMessageRequest.requestedMessage MeterValues, got {request.requested_message}"
+    assert request.evse is not None and request.evse.id == CONFIGURED_EVSE_ID, \
+        f"Expected TriggerMessageRequest.evse.id {CONFIGURED_EVSE_ID}, got {request.evse}"
+
+    # 3. The Test System sends a MeterValuesRequest
+    #    - With evseId <Configured evseId>
+    #    - meterValue[0].sampledValue.context Trigger
+    # 4. The CSMS responds with a MeterValuesResponse
+    await cp.send_meter_values(CONFIGURED_EVSE_ID, [{'value': 0.0, 'context': 'Trigger'}])
+
+    start_task.cancel()

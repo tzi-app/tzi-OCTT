@@ -74,3 +74,49 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           Rejected and optionally a statusInfo.reasonCode = UnsupportedPurpose | Purpose not allowed from
           CSMS. |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.booted import booted
+from smart_charging import charging_profile, request_charging_profile, validate_profile
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_k_106(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # The Test System supports local time and randomized delays in charging schedules.
+    cp.variables = {
+        'SmartChargingCtrlr.SupportsUseLocalTime': 'true',
+        'SmartChargingCtrlr.SupportsRandomizedDelay': 'true',
+    }
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to send a TxDefaultProfile charging profile with
+    #                useLocalTime true and a randomizedDelay > 0
+    # 1. The CSMS sends a SetChargingProfileRequest
+    # 2. The Test System responds with a SetChargingProfileResponse with status Accepted
+    request = await request_charging_profile(cp, CONFIGURED_EVSE_ID, charging_profile(
+        'TxDefaultProfile', 'Absolute', 6, schedule={'useLocalTime': True, 'randomizedDelay': 120}))
+
+    validate_profile(request, purpose='TxDefaultProfile', stack_level=None)
+    for schedule in request.charging_profile.charging_schedule:
+        assert schedule.use_local_time is True, \
+            f"Expected chargingProfile.chargingSchedule.useLocalTime true, got {schedule.use_local_time}"
+        assert schedule.randomized_delay is not None and schedule.randomized_delay > 0, \
+            f"Expected chargingProfile.chargingSchedule.randomizedDelay > 0, got {schedule.randomized_delay}"
+
+    start_task.cancel()

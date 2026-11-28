@@ -48,3 +48,49 @@ Tool validations
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from diagnostics import request_log
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_n_100(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisite: Charging station supports DataCollector (Component DataCollector available).
+    cp.variables = {'DataCollector.Available': 'true', 'DataCollector.Enabled': 'true'}
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Request the CSMS to retrieve the DataCollectorLog
+    # 1. The CSMS sends a GetLogRequest
+    # 2. The Test System responds with a GetLogResponse
+    request = await request_log(cp, 'DataCollectorLog')
+    assert request.log_type == 'DataCollectorLog', \
+        f"Expected GetLogRequest.logType DataCollectorLog, got {request.log_type}"
+
+    # 3. The Test System sends a LogStatusNotificationRequest with
+    #    - status Uploading
+    #    - requestId <GetLogRequest.requestId of step 1>
+    # 4. The CSMS responds with a LogStatusNotificationResponse.
+    # 5. The Test System sends a LogStatusNotificationRequest with
+    #    - status Uploaded
+    #    - requestId <GetLogRequest.requestId of step 1>
+    # 6. The CSMS responds with a LogStatusNotificationResponse.
+    for status in ('Uploading', 'Uploaded'):
+        await cp.send_log_status_notification_request(status, request_id=request.request_id)
+
+    start_task.cancel()

@@ -49,3 +49,43 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
         | New | A02.FR.02 | | The Charging Station SHALL generate a new public / private key pair using one of
           the key generation functions described in Section 8.1 of [27] . | |
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from reusable_states.renew_charging_station_certificate import renew_charging_station_certificate
+from security import client_certificate_files, connect_with_profile
+
+SECURITY_PROFILE_3_CP = os.environ['CP21_SP3']
+
+
+@pytest.mark.asyncio
+async def test_tc_a_11():
+    cp_id = SECURITY_PROFILE_3_CP
+
+    ws = await connect_with_profile(cp_id, security_profile=3)
+    try:
+        cp = TziChargePoint21(cp_id, ws)
+        start_task = asyncio.create_task(cp.start())
+
+        # 1. Execute Reusable State RenewChargingStationCertificate
+        certificate_chain, private_key = await renew_charging_station_certificate(cp)
+
+        start_task.cancel()
+    finally:
+        # 2. The Test System disconnects its current connection ...
+        await ws.close()
+
+    # 2. ... and reconnects to the CSMS with the new certificate.
+    # 3. The CSMS accepts the incoming connection request using the new certificate.
+    with client_certificate_files(certificate_chain, private_key) as (new_cert, new_key):
+        ws = await connect_with_profile(
+            cp_id, security_profile=3, client_cert=new_cert, client_key=new_key)
+        try:
+            # Post scenario validation: the Test System and the CSMS are connected.
+            assert ws.open, "The CSMS must accept the connection with the new certificate"
+        finally:
+            await ws.close()

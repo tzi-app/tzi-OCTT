@@ -49,3 +49,52 @@ N/a
 Post scenario validations:
     N/a
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from reusable_states.authorized import authorized
+from reusable_states.booted import booted
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+# TxCtrlr.EVConnectionTimeOut of the Test System, in seconds
+CONFIGURED_EV_CONNECTION_TIMEOUT = int(os.environ['CONFIGURED_EV_CONNECTION_TIMEOUT'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_e_39(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Reusable State: State is Authorized
+    transaction_id = await authorized(cp)
+
+    # 1. The Test System sends a TransactionEventRequest
+    #    - With triggerReason is EVConnectTimeout
+    #    - transactionInfo.stoppedReason is Timeout
+    #    - eventType is Ended
+    #    Note(s): This step will be executed after the <Configured EV connection timeout>
+    #    expires.
+    # 2. The CSMS responds with a TransactionEventResponse
+    await asyncio.sleep(CONFIGURED_EV_CONNECTION_TIMEOUT)
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='EVConnectTimeout',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'stopped_reason': 'Timeout'},
+    ))
+
+    start_task.cancel()

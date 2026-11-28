@@ -110,3 +110,123 @@ Errata (OCPP 2.1 Edition 2 errata 2026-09)
           CSMS responds with a TransactionEventResponse |
         | … | |
 """
+
+import asyncio
+import os
+
+import pytest
+from ocpp.v21 import call
+
+from charge_point import TziChargePoint21
+from ocpp_messages import utc_now_iso
+from payment import fixed_fee_cost_details, new_psp_ref
+from reusable_states.booted import booted
+from trigger import kiosk_payment_authorized
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+CONFIGURED_EVSE_ID = int(os.environ['CONFIGURED_EVSE_ID'])
+CARD_LAST_4_DIGITS = os.environ['CARD_LAST_4_DIGITS']
+
+# The amount the payment terminal has authorized for the payment card
+AUTHORIZATION_AMOUNT = 50.00
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_c_126(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    # Prerequisites: the Test System has AuthCtrlr.AuthorizeRemoteStart = false,
+    # TariffCostCtrlr.Enabled[Cost] = true (the station calculates the cost locally) and
+    # TariffCostCtrlr.Currency = "EUR".
+    cp.variables = {
+        'AuthCtrlr.AuthorizeRemoteStart': 'false',
+        'TariffCostCtrlr.Enabled[Cost]': 'true',
+        'TariffCostCtrlr.Currency': 'EUR',
+    }
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # Manual Action: Present a payment card to the payment terminal Kiosk for Charging
+    #                Station with identity <Configured unique Charging Station identifier>
+    # 1. The CSMS sends a RequestStartTransactionRequest
+    # 2. The Test System responds with a RequestStartTransactionResponse with status Accepted
+    request = await cp.wait_for_request(
+        'RequestStartTransaction',
+        manual_action=kiosk_payment_authorized(
+            BASIC_AUTH_CP, psp_ref=new_psp_ref(), evse_id=CONFIGURED_EVSE_ID,
+            card_last_4_digits=CARD_LAST_4_DIGITS, authorization_amount=AUTHORIZATION_AMOUNT))
+
+    assert request.evse_id == CONFIGURED_EVSE_ID, \
+        f"Expected RequestStartTransactionRequest.evseId {CONFIGURED_EVSE_ID}, got {request.evse_id}"
+    assert request.remote_start_id is not None, "RequestStartTransactionRequest has no remoteStartId"
+    assert request.id_token.id_token, "RequestStartTransactionRequest.idToken.idToken is empty"
+    assert request.id_token.type == 'DirectPayment', \
+        f"Expected idToken.type DirectPayment, got {request.id_token.type}"
+    card_details = [info for info in request.id_token.additional_info or []
+                    if info.type == 'CardLast4Digits']
+    assert card_details, \
+        f"Expected idToken.additionalInfo with type CardLast4Digits, got {request.id_token.additional_info}"
+    assert card_details[0].additional_id_token == CARD_LAST_4_DIGITS, \
+        f"Expected idToken.additionalInfo.additionalIdToken {CARD_LAST_4_DIGITS}, " \
+        f"got {card_details[0].additional_id_token}"
+
+    # 3. The Test System sends a TransactionEventRequest with
+    #    - eventType Started
+    #    - idToken <IdToken from step 1>
+    #    - idToken.type DirectPayment
+    #    - idToken.additionalInfo <additionalInfo>
+    #    - transactionInfo.transactionId <transactionId>
+    #    It is the first TransactionEventRequest after the RequestStartTransactionRequest, so it
+    #    has triggerReason RemoteStart and the remoteStartId (F02.FR.21).
+    # 4. The CSMS responds with a TransactionEventResponse
+    transaction_id = cp.session.start_transaction()
+    response = await cp.call(call.TransactionEvent(
+        event_type='Started',
+        timestamp=utc_now_iso(),
+        trigger_reason='RemoteStart',
+        seq_no=cp.next_seq_no(),
+        transaction_info={'transaction_id': transaction_id, 'remote_start_id': request.remote_start_id},
+        id_token=request.id_token,
+    ))
+    # transactionLimit.maxCost = <not omitted>
+    assert response.transaction_limit is not None and response.transaction_limit.max_cost is not None, \
+        f"TransactionEventResponse has no transactionLimit.maxCost: {response.transaction_limit}"
+    max_cost = response.transaction_limit.max_cost
+
+    # Settlement
+    # 5. The Test System sends a TransactionEventRequest with
+    #    - eventType Ended
+    #    - idToken <IdToken from step 1>
+    #    - idToken.type DirectPayment
+    #    - transactionInfo.transactionId <transactionId>
+    #    - transactionInfo.transactionLimit.maxCost <not omitted>
+    #    - transactionInfo.stoppedReason Local and triggerReason StopAuthorized (errata 2026-09,
+    #      6.3.9)
+    #    - costDetails: a fixed fee of 15.00 EUR excluding and 18.15 EUR including tax (type
+    #      MyTax, 21), totalUsage.energy 123, chargingTime 5, idleTime 0, chargingPeriods
+    #      <omitted>
+    # 6. The CSMS responds with a TransactionEventResponse
+    await cp.call(call.TransactionEvent(
+        event_type='Ended',
+        timestamp=utc_now_iso(),
+        trigger_reason='StopAuthorized',
+        seq_no=cp.next_seq_no(),
+        transaction_info={
+            'transaction_id': transaction_id,
+            'stopped_reason': 'Local',
+            'transaction_limit': {'max_cost': max_cost},
+        },
+        id_token=request.id_token,
+        cost_details=fixed_fee_cost_details(),
+    ))
+
+    # Note: The CSMS sends a message to Payment Kiosk or PSP to settle the cost for amount:
+    # 18.15 EUR. That happens between the CSMS and the Payment Kiosk or PSP, where this test
+    # cannot see it.
+
+    start_task.cancel()

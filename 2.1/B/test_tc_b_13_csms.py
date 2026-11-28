@@ -40,3 +40,45 @@ Post scenario validations:
     CSMS receives all NotifyReportRequest message for this requestId and is able to show the result of full
     inventory to an operator.
 """
+
+import asyncio
+import os
+
+import pytest
+
+from charge_point import TziChargePoint21
+from device_model import FULL_INVENTORY, send_report
+from reusable_states.booted import booted
+from trigger import get_base_report
+from utils import get_basic_auth_headers
+
+BASIC_AUTH_CP = os.environ['CP21_SP1']
+BASIC_AUTH_CP_PASSWORD = os.environ['BASIC_AUTH_CP_PASSWORD']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connection",
+                         [(BASIC_AUTH_CP, get_basic_auth_headers(BASIC_AUTH_CP, BASIC_AUTH_CP_PASSWORD))],
+                         indirect=True)
+async def test_tc_b_13(connection):
+    assert connection.open
+    cp = TziChargePoint21(BASIC_AUTH_CP, connection)
+    start_task = asyncio.create_task(cp.start())
+    await booted(cp)
+
+    # 1. Manually instruct CSMS to retrieve a FullInventory report.
+    # 2. Test System responds with: GetBaseReportResponse
+    request = await cp.wait_for_request(
+        'GetBaseReport',
+        manual_action=get_base_report(BASIC_AUTH_CP, 'FullInventory'))
+
+    assert isinstance(request.request_id, int) and request.request_id >= 0, \
+        f"requestId must have an integer value >= 0, got: {request.request_id}"
+    assert request.report_base == 'FullInventory', \
+        f"Expected reportBase FullInventory, got: {request.report_base}"
+
+    # The CSMS receives all NotifyReportRequest messages for this requestId. That it is able
+    # to show the full inventory to an operator is a check on the CSMS itself.
+    await send_report(cp, request.request_id, FULL_INVENTORY)
+
+    start_task.cancel()
