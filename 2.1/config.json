@@ -1,0 +1,83 @@
+{
+  "CSMS_WSS_PORT": 9000,
+  "CSMS_TRIGGER_PORT": 5001,
+  "CSMS_MESSAGE_TIMEOUT": 10,
+  "CSMS_SERVER_CERT": "certs/server.pem",
+  "CSMS_SERVER_KEY": "certs/server.key",
+  "CSMS_SERVER_RSA_CERT": "certs/server_rsa.pem",
+  "CSMS_SERVER_RSA_KEY": "certs/server_rsa.key",
+  "CSMS_CA_CERT": "certs/ca.pem",
+  "CSMS_CA_KEY": "certs/ca.key",
+  "V2G_ROOT_CERT": "certs/v2g_root_ca.pem",
+  "V2G_SUB_CA_CERT": "certs/contract_sub_ca.pem",
+  "V2G_SUB_CA_KEY": "certs/contract_sub_ca.key",
+  "BASIC_AUTH_CP_PASSWORD": "test1234",
+  "STATIONS": {
+    "CP21_SP1": 1,
+    "CP21_SP2": 2,
+    "CP21_SP3": 3
+  },
+  "ID_TOKENS": {
+    "TAG-001": {
+      "status": "Accepted",
+      "group": "GROUP001"
+    },
+    "100000C01": {
+      "status": "Accepted",
+      "group": "GROUP001"
+    },
+    "100000C39B": {
+      "status": "Accepted",
+      "group": "GROUP001"
+    },
+    "100000C02": {
+      "status": "Invalid"
+    },
+    "100000C06": {
+      "status": "Blocked"
+    },
+    "100000C07": {
+      "status": "Expired"
+    },
+    "MASTERC47": {
+      "status": "Accepted",
+      "group": "GROUP001"
+    },
+    "GROUP001": {
+      "status": "Accepted"
+    },
+    "EMAID001": {
+      "status": "Accepted"
+    },
+    "PREPAID001": {
+      "status": "Accepted",
+      "prepaid_balance": 25.0
+    },
+    "PREPAID002": {
+      "status": "Accepted",
+      "prepaid_balance": 0
+    }
+  },
+  "GROUP_ID_TOKEN_TYPE": "Central",
+  "VALID_VAT_NUMBERS": [
+    "NL123456789B01"
+  ],
+  "COST_PER_KWH": 0.3,
+  "QR_CODE_URL_TEMPLATE": "https://qr.example.com/{chargingstationid}/{evse}/{totp}/{version}",
+  "QR_CODE_SHARED_SECRET": "mysharedsecret",
+  "QR_CODE_VALIDITY_TIME": 30,
+  "QR_CODE_TOTP_LENGTH": 8,
+  "ALLOWED_ENERGY_TRANSFER": [
+    "AC_single_phase",
+    "AC_two_phase",
+    "AC_three_phase",
+    "AC_BPT",
+    "DC",
+    "DC_BPT"
+  ],
+  "SITE_POWER_LIMIT": 11000,
+  "CPS_PROXY_URL": "http://localhost:19081",
+  "CSMS_LOG_HTTPS_PORT": 5002,
+  "LOG_UPLOAD_USER": "octt-logs",
+  "LOG_UPLOAD_PASSWORD": "log-upload-secret"
+}
