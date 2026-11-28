@@ -1,13 +1,18 @@
 # OCPP CSMS Test Suite
 
-Python (`pytest`) implementation of OCTT scenarios for CSMS (Central System Management System) verification against OCPP 2.0.1 and OCPP 1.6J.
+Python (`pytest`) implementation of OCTT scenarios for CSMS (Central System Management System) verification against OCPP 2.0.1 and OCPP 1.6J, with experimental (alpha) support for OCPP 2.1.
 
 > **Need to test your CSMS?** Here's a [step-by-step setup guide](CSMS_SETUP.md). It covers TLS, the six
 > test charging stations, the ID tokens, and the trigger API your CSMS has to provide, through to your first test run.
 
+> **OCPP 2.1 support is experimental (alpha).** The 2.1 tests have only run against the bundled simulator, not
+> against a real CSMS, and their trigger API and some of their interpretations may still change. See
+> [OCPP 2.1 Support (Experimental)](#ocpp-21-support-experimental).
+
 Based on:
 - `OCPP 2.0.1 Specification, Edition 4 (2025-12-03)`
 - `OCPP 1.6J Specification, (2025-11)`
+- `OCPP 2.1 Specification, Edition 2, with the 2026-09 errata` (experimental)
 
 ## Project Structure
 
@@ -20,6 +25,18 @@ Based on:
 │   ├── trigger.py                # Trigger API client (CSMS-initiated actions)
 │   ├── csms.py                   # Minimal in-memory CSMS for validating the tests
 │   └── config.json               # Configuration of csms.py
+├── 2.1/                          # OCPP 2.1 test suite (experimental)
+│   ├── A/ … S/                   # Test blocks (sections A through S)
+│   ├── reusable_states/          # Reusable states (shared preconditions)
+│   ├── charge_point.py           # Mock charge point (2.1)
+│   ├── ocpp_messages.py          # OCPP-J 2.1 message and schema helpers
+│   ├── conftest.py               # Pytest fixtures and shared setup
+│   ├── trigger.py                # Trigger API client (CSMS-initiated actions)
+│   ├── smart_charging.py, …      # Helpers per topic (tariffs, firmware, certificates, …)
+│   ├── csms.py                   # Minimal in-memory CSMS for validating the tests
+│   ├── config.json               # Configuration of csms.py
+│   ├── ERRATA.md                 # Impact of the 2026-09 errata on the tests
+│   └── OPEN_QUESTIONS.md         # Open questions and decisions of the 2.1 tests
 ├── 1.6/                          # OCPP 1.6J test suite
 │   ├── test_tc_*.py              # Test cases (TC_001 – TC_088)
 │   ├── charge_point.py           # Mock charge point (1.6J)
@@ -72,13 +89,42 @@ Based on:
 
 **Combined total: 327 tests**
 
+### OCPP 2.1 (experimental)
+
+- `A` Security: 15
+- `B` Provisioning: 27
+- `C` Authorization: 29
+- `D` Local Authorization List Management: 6
+- `E` Transactions: 36
+- `F` Remote Control: 16
+- `G` Availability: 10
+- `H` Reservation: 9
+- `I` Tariff and Cost: 12
+- `J` Meter Values: 9
+- `K` Smart Charging: 45
+- `L` Firmware Management: 19
+- `M` Certificate Management: 20
+- `N` Diagnostics: 36
+- `O` Display Message: 23
+- `P` Data Transfer: 2
+- `Q` Bidirectional Power Transfer: 13
+- `R` DER Control: 2
+- `S` Battery Swapping: 2
+
+**OCPP 2.1 total: 331 tests (alpha, not counted in the combined total)**
+
+One of them, TC_Q_102, is skipped: the 2026-09 errata removed the test case.
+
 ## Test Artifacts
 
-- OCPP 2.0.1 test files follow `test_tc_<section>_<id>_csms.py` naming (e.g., `test_tc_k_01_csms.py`).
+- OCPP 2.0.1 and OCPP 2.1 test files follow `test_tc_<section>_<id>_csms.py` naming (e.g., `test_tc_k_01_csms.py`).
 - OCPP 1.6J test files follow `test_tc_<number>_csms.py` naming (e.g., `test_tc_001_csms.py`).
 - Every test file starts with its test description: the scenario steps and tool validations of the OCTT test case.
+- OCPP 2.1 test descriptions also carry the errata entries that apply to them. `2.1/ERRATA.md` lists the impact of
+  the 2026-09 errata on the tests.
 - Mermaid sequence diagrams are included for all tests.
-- Reusable states are in `2.0.1/reusable_states/` and `1.6/reusable_state_*.py`, to keep setup consistent.
+- Reusable states are in `2.0.1/reusable_states/`, `2.1/reusable_states/` and `1.6/reusable_state_*.py`, to keep
+  setup consistent.
 
 ## Testing your CSMS
 
@@ -101,6 +147,9 @@ Every setting has a default in `pytest.ini`, and an environment variable of the 
 `CSMS_ADDRESS`, `CSMS_TRIGGER_ADDRESS`, or the station IDs. The setup guide's
 [settings reference](CSMS_SETUP.md#reference-all-settings) lists them all.
 
+The setup guide covers OCPP 2.0.1 and OCPP 1.6J. For OCPP 2.1, see
+[OCPP 2.1 Support (Experimental)](#ocpp-21-support-experimental).
+
 ## CSMS Trigger API
 
 Many OCTT test scenarios require CSMS-initiated actions (e.g., RequestStartTransaction, Reset, SetChargingProfile). The
@@ -112,6 +161,8 @@ The tests call it through helper modules:
 
 - `2.0.1/trigger.py`: `send_call()`, `trigger_v201()`, `get_variables()`, `set_variables()`, `reset()`, etc.
 - `1.6/trigger.py`: `trigger_v16()`, `set_basic_auth_password()`, `create_token()`
+- `2.1/trigger.py` (experimental): `send_call()`, `trigger_v21()`, `trigger_message()`, `get_variables()`,
+  `set_variables()`, `set_transaction_limit()`, etc.
 
 ### API Convention
 
@@ -125,10 +176,40 @@ answers with HTTP 200 and a JSON body.
 | `/api/octt/1.6/{stationId}/{action}` | The OCPP 1.6 request payload | Sends the matching CALL. Actions are kebab-case, e.g. `remote-start-transaction` |
 | `/api/octt/set-basic-auth-password` | `{"station_id": "...", "password": "..."}` | Stores a new Basic Auth password for the station |
 | `/api/octt/create-token` | `{"token_id": "...", "status": "..."}` | Creates or updates an ID token with that status (Blocked or Expired) |
+| `/api/octt/2.1/{stationId}/call/{Action}` (experimental) | The OCPP 2.1 request payload | Sends that CALL to the station, e.g. `call/SetDefaultTariff` |
+| `/api/octt/2.1/…` (experimental) | Depends on the endpoint | Control endpoints of the OCPP 2.1 tests: those of 2.0.1 except `set-items-per-message`, and eight new ones |
 
 Step 7 of the setup guide has [the full contract](CSMS_SETUP.md#step-7--implement-the-trigger-api): every
 action, and the body and behavior of each control endpoint. tzi-csms, for example, provides the API when it is built
-with `--features octt-triggers`.
+with `--features octt-triggers`. The setup guide does not cover the OCPP 2.1 endpoints yet; their contract is in
+part 2 of [2.1/OPEN_QUESTIONS.md](2.1/OPEN_QUESTIONS.md), and it may still change.
+
+## OCPP 2.1 Support (Experimental)
+
+The OCPP 2.1 suite in `2.1/` is **alpha**. It implements the 331 CSMS test cases of blocks A–S from the official test
+case descriptions and the 2026-09 errata. Before you rely on it, know that:
+
+- **The tests have only run against the bundled simulator**, [2.1/csms.py](2.1/csms.py), which was written together
+  with them. No real CSMS has run them yet, so some of them may be wrong.
+- **Some interpretations are open.** Where a test description is ambiguous, or disagrees with itself or with the
+  specification, the test makes a choice. [2.1/OPEN_QUESTIONS.md](2.1/OPEN_QUESTIONS.md) lists these choices, and
+  they may change.
+- **The trigger API of the 2.1 tests may change.** It has eight endpoints that the 2.0.1 API does not have.
+- **The [setup guide](CSMS_SETUP.md) does not cover OCPP 2.1 yet.**
+
+There is no complete list yet of what a CSMS needs for the 2.1 tests. The starting points are:
+
+1. **A WebSocket endpoint for the `ocpp2.1` subprotocol**, over TLS as in step 2 of the setup guide.
+2. **Three registered charging stations:** `CP21_SP1` (security profile 1), `CP21_SP2` (profile 2) and `CP21_SP3`
+   (profile 3). The Basic Auth password is `test1234`.
+3. **The trigger API under `/api/octt/2.1/…`.** It follows the conventions of the 2.0.1 API. The tests send 49
+   actions through `call/{Action}`, 13 of which are new in OCPP 2.1, and use the control endpoints.
+   [2.1/OPEN_QUESTIONS.md](2.1/OPEN_QUESTIONS.md) has the contract in part 2, and `2.1/trigger.py` is the client.
+4. **The settings in `pytest.ini`.** Part 3 of the same file lists the ones that the 2.1 tests added, such as the
+   prepaid cards, the VAT numbers and the QR code payment settings.
+
+The OCPP 2.1 JSON schemas come from the `ocpp` package (`requirements.txt`), so `2.1/` has no `schema/` directory.
+[Running Tests](#running-tests) and [CSMS Simulator](#csms-simulator) have the 2.1 commands.
 
 ## Installation
 
@@ -184,12 +265,26 @@ Run a specific 1.6J test:
 pytest -v -p no:warnings ./1.6/test_tc_001_csms.py
 ```
 
+### OCPP 2.1 (experimental)
+
+Run a block, a specific test with its OCPP messages logged ([Debugging](#debugging)), or the full 2.1 suite:
+
+```bash
+pytest -v -p no:warnings ./2.1/K
+pytest -v -p no:warnings ./2.1/K/test_tc_k_01_csms.py --log-messages
+pytest -v -p no:warnings ./2.1
+```
+
+So far these tests have only run against the [OCPP 2.1 simulator](#ocpp-21-simulator-experimental). TC_E_107 takes
+two minutes: its transaction has a time limit of 120 seconds, and the test waits until it is reached.
+
 ### All Tests
 
-The two suites have modules with the same names (`trigger.py`, `conftest.py`), so run each in its own pytest session:
+The suites have modules with the same names (`trigger.py`, `conftest.py`), so run each in its own pytest session:
 
 ```bash
 pytest -v -p no:warnings ./2.0.1 && pytest -v -p no:warnings ./1.6
+pytest -v -p no:warnings ./2.1        # experimental
 ```
 
 Collect-only (fast sanity check), per suite:
@@ -197,6 +292,7 @@ Collect-only (fast sanity check), per suite:
 ```bash
 pytest --collect-only -q ./2.0.1
 pytest --collect-only -q ./1.6
+pytest --collect-only -q ./2.1
 ```
 
 Some tests change a station's configuration in the CSMS: its Basic Auth password or its security profile. Restore the
@@ -278,7 +374,7 @@ guide, step 6).
 
 [csms.py](2.0.1/csms.py) is a minimal in-memory CSMS for checking the behavior of the tests themselves. You don't need
 it to test your own CSMS, and it is not intended for production use. It supports OCPP 2.0.1 only, so the 1.6J suite
-cannot run against it.
+cannot run against it. The OCPP 2.1 suite has [its own simulator](#ocpp-21-simulator-experimental).
 
 ### Running it
 
@@ -325,6 +421,34 @@ All settings come from `2.0.1/config.json`; the simulator reads no environment v
 - `CSMS_CP_ACTIONS`, `CSMS_TEST_MODE`
 
 To set up your own CSMS for the tests, follow the [setup guide](CSMS_SETUP.md).
+
+### OCPP 2.1 simulator (experimental)
+
+[2.1/csms.py](2.1/csms.py) is the same kind of simulator for the OCPP 2.1 suite: a minimal in-memory CSMS, not
+intended for production use. So far it is the only CSMS that the 2.1 tests have run against. Start it, with the
+virtual environment active:
+
+```bash
+python 2.1/csms.py
+```
+
+It is ready when it logs `CSMS 2.1 simulator started.` In another terminal, run the 2.1 tests, for example:
+
+```bash
+pytest -v -p no:warnings ./2.1/B/test_tc_b_20_csms.py
+```
+
+| Server | Port in `2.1/config.json` | Used by the tests |
+|---|---|---|
+| WSS: TLS, with Basic Auth or a client certificate | `CSMS_WSS_PORT`: 9000 | Yes, as `CSMS_ADDRESS` (`wss://localhost:9000`) |
+| Trigger API (HTTP), which is also its log server over HTTP | `CSMS_TRIGGER_PORT`: 5001 | Yes, as `CSMS_TRIGGER_ADDRESS` (`http://localhost:5001`) |
+| Log server over HTTPS | `CSMS_LOG_HTTPS_PORT`: 5002 | Yes, by TC_N_103 |
+
+- **One simulator at a time:** its default ports are those of the 2.0.1 simulator.
+- **Stations:** it accepts the stations in `STATIONS` of `2.1/config.json`, each with its security profile:
+  `CP21_SP1`, `CP21_SP2` and `CP21_SP3`. It refuses any other station ID.
+- **Configuration:** all settings come from `2.1/config.json`; it reads no environment variables. It stores nothing,
+  so a restart resets it.
 
 
 ## Contributing
