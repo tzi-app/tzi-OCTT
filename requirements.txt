@@ -5,4 +5,4 @@ pytest-asyncio~=0.24.0
 pyhumps~=3.8.0
 jsonschema~=4.23.0
 pytest-env
-cryptography
+cryptography>=45.0.1  # mock_ocsp_responder.py uses OCSPResponseBuilder.add_response_by_hash
